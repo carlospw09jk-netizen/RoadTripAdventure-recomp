@@ -3,7 +3,9 @@
 CPU: sum over threads of run time x the clock of the core it ran on (GHz-equivalent = billions of
 cycles per second). GPU: busy fraction x clock (MHz-equivalent)."""
 import subprocess, sys, collections
-pkg = sys.argv[1]; secs = int(sys.argv[2]) if len(sys.argv) > 2 else 10
+pkg = sys.argv[1]
+if pkg == "io.github.silentsudin.roadtrip": sys.exit("measure.py: use the dev app (io.github.silentsudin.roadtrip.dev), not the installed release app")
+secs = int(sys.argv[2]) if len(sys.argv) > 2 else 10
 pid = subprocess.run(["adb", "shell", "pidof", pkg], capture_output=True, text=True).stdout.split()[0]
 subprocess.run(["adb", "push", str(__import__("pathlib").Path(__file__).with_name("sample.sh")), "/data/local/tmp/sample.sh"], capture_output=True)
 out = subprocess.run(["adb", "shell", f"sh /data/local/tmp/sample.sh {pid} {secs}"], capture_output=True, text=True).stdout

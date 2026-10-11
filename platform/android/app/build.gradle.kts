@@ -35,6 +35,11 @@ android {
         }
     }
     buildTypes {
+        // Debug builds are a separate app (Road Trip DEV, io.github.silentsudin.roadtrip.dev): its own
+        // data, saves and signature, so testing never touches the installed release app.
+        getByName("debug") {
+            applicationIdSuffix = ".dev"
+        }
         getByName("release") {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")

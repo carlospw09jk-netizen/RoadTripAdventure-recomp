@@ -79,6 +79,7 @@ namespace rt::textures::packprep
         s.finished = g_job->completed;
         s.done = g_job->progress.done;
         s.total = g_job->progress.total;
+        s.failed = g_job->progress.failed;
         const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_job->started).count();
         if (s.running && s.done >= 3u && t > 2.0 && s.total > s.done)
             s.secondsLeft = t / s.done * (s.total - s.done);

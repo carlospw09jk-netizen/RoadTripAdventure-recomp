@@ -638,8 +638,15 @@ namespace rt::ui
                     if (ps2x::gs::PgsControl *gs = gsControl())
                     {
                         const auto stats = gs->texturePackStats();
-                        hint = (ready ? std::string("Ready: it loads smoothly now. ") : std::string()) + hint + " In use so far: " +
-                               std::to_string(stats.replaced) + " of " + std::to_string(stats.packImages) + ".";
+                        const auto st = rt::textures::packprep::status();
+                        // Images that couldn't be converted load from their PNGs (slower), and say so.
+                        const std::string prepared =
+                            !ready              ? std::string()
+                            : st.failed == 0u ? std::string("Ready: it loads smoothly now. ")
+                                              : "Ready, but " + std::to_string(st.failed) + " of " + std::to_string(st.total) +
+                                                    " images couldn't be converted and load from their PNGs. ";
+                        hint = prepared + hint + " In use so far: " + std::to_string(stats.replaced) + " of " +
+                               std::to_string(stats.packImages) + ".";
                     }
                 rows.push_back({"Texture pack",
                                 [&s, missing] {

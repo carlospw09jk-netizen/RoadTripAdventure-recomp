@@ -23,7 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
-DEFAULT_APP = REPO / "build/macos-release/RoadTrip.app/Contents/MacOS/RoadTrip"
+WINDOWS = os.name == "nt"
+DEFAULT_APP = (REPO / "build/windows-release/RoadTrip.exe" if WINDOWS
+               else REPO / "build/macos-release/RoadTrip.app/Contents/MacOS/RoadTrip")
 VBLANKS_PER_SECOND = 60000 / 1001
 
 # DualShock 2 buttons (active-low bits in the pad data).
@@ -45,7 +47,20 @@ def seconds(s: float) -> int:
 _LIVE: "weakref.WeakSet[Game]" = weakref.WeakSet()
 
 
+def link_dir(target: Path, link: Path) -> None:
+    """A directory link (on Windows a junction: symlinks need developer mode there)."""
+    if WINDOWS:
+        import _winapi
+        _winapi.CreateJunction(str(target), str(link))
+    else:
+        os.symlink(target, link)
+
+
 def _kill_group(proc: subprocess.Popen) -> None:
+    if WINDOWS:
+        proc.kill()  # the app's own threads go with it
+        proc.wait(timeout=10)
+        return
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -142,7 +157,7 @@ class Game:
             shutil.rmtree(self.work_dir)
         self.data_dir.mkdir(parents=True)
         for name in ("disc", "game"):
-            os.symlink(self.base_data / name, self.data_dir / name)
+            link_dir(self.base_data / name, self.data_dir / name)
         self.saves_dir.mkdir(parents=True)
         if self.card2:
             shutil.copytree(self.card2, self.saves_dir / "mc1")
@@ -170,7 +185,8 @@ class Game:
             "RT_SPEED": self.speed,
             "RT_FAKE_CLOCK": str(self.fake_clock),
             "RT_HEADLESS": "1",
-            "RT_TEST_SOCKET": "rt.sock",  # relative: AF_UNIX paths are limited to 104 bytes
+            # relative: AF_UNIX paths are limited to 104 bytes; Windows: TCP on the loopback
+            "RT_TEST_SOCKET": f"tcp:{self._free_port()}" if WINDOWS else "rt.sock",
             "RT_RENDER": "1" if self.rendering else "0",
             # The original interlaced fields at 4x: goldens and state hashes record the game as is.
             "RT_PROGRESSIVE_FIELDS": "0",
@@ -178,14 +194,19 @@ class Game:
             # The game's own Title > Options screens (test_menus checks them); the app's
             # replacement is tested with this off (test_options_replaced).
             "RT_GAME_OPTIONS": "1",
+            # The goldens are paraLLEl-GS pictures: pinned, whatever the app's default renderer
+            # (RT_GS_BACKEND=hw runs the suite on the hardware GS, compared by goldens.py).
+            "RT_GS_BACKEND": os.environ.get("RT_GS_BACKEND") or "pgs",
         })
         if self.state_hash:
             env["RT_STATE_HASH"] = str(self.work_dir / "state_hash.txt")
         env.update(self.extra_env)
         self.log = open(self.work_dir / "app.log", "wb")
         # Its own process group, so close() (or the exit hook) can stop everything it started.
+        group = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {"start_new_session": True})
         self.proc = subprocess.Popen([str(self.app)], cwd=self.work_dir, env=env,
-                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
+                                     stdout=self.log, stderr=subprocess.STDOUT, **group)
+        self._env = env
         _LIVE.add(self)
         try:
             self._connect()
@@ -194,9 +215,31 @@ class Game:
             raise
         return self
 
+    @staticmethod
+    def _free_port() -> int:
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
     def _connect(self):
-        sock_path = self.work_dir / "rt.sock"
         deadline = time.time() + 120  # the game library may be (re)built on first launch
+        if WINDOWS:
+            port = int(self._env["RT_TEST_SOCKET"].split(":")[1])
+            while True:
+                if self.proc.poll() is not None:
+                    raise GameError(f"app exited ({self.proc.returncode}); see {self.work_dir / 'app.log'}")
+                try:
+                    self.sock = socket.create_connection(("127.0.0.1", port), timeout=1)
+                    self.sock.settimeout(None)
+                    break
+                except OSError:
+                    if time.time() > deadline:
+                        raise GameError("app did not open its test socket")
+                    time.sleep(0.2)
+            self._file = self.sock.makefile("rw")
+            self.run(1)
+            return
+        sock_path = self.work_dir / "rt.sock"
         while not sock_path.exists():
             if self.proc.poll() is not None:
                 raise GameError(f"app exited ({self.proc.returncode}); see {self.work_dir / 'app.log'}")
@@ -220,7 +263,10 @@ class Game:
             except Exception:
                 pass
             if getattr(self, "_file", None):
-                self._file.close()
+                try:
+                    self._file.close()
+                except OSError:
+                    pass  # the app is gone already (a broken pipe flushing the quit)
                 self._file = None
             self.sock.close()
             self.sock = None

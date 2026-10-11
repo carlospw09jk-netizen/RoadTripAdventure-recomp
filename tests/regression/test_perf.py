@@ -15,12 +15,13 @@ FPS_LINE = re.compile(r"\[fps\] game ([\d.]+) fps .*?vif1/vu1 thread (\d+)% busy
 
 
 @pytest.mark.perf
-def test_quick_race_holds_60_fps(options, test_data):
-    work = test_data / "runs" / "perf_quick_race"
+@pytest.mark.parametrize("backend", ["hw", "pgs"])  # the hardware GS (the default) and paraLLEl-GS
+def test_quick_race_holds_60_fps(options, test_data, backend):
+    work = test_data / "runs" / f"perf_quick_race_{backend}"
     work.mkdir(parents=True, exist_ok=True)
     base = Path(options.base_data)
     env = dict(os.environ, RT_DATA_DIR=str(base), RT_SHOW_FPS="1", RT_INPUT_SCRIPT=QUICK_RACE,
-               RT_EXIT_AT_VBLANK=str(95 * 60), RT_HEADLESS="1")
+               RT_EXIT_AT_VBLANK=str(95 * 60), RT_HEADLESS="1", RT_GS_BACKEND=backend)
     log = subprocess.run([options.app], env=env, cwd=work, capture_output=True, text=True, timeout=600).stderr
     samples = [tuple(float(g) for g in m.groups()) for m in FPS_LINE.finditer(log)]
     race = samples[-12:]  # the last ~24 s: racing

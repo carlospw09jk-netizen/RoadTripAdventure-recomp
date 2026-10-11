@@ -97,36 +97,54 @@ namespace rt::debug
         s.batteryC = tenths > 0 ? tenths / 10.0 : -1.0;
 #endif
 #if defined(__ANDROID__)
-        // GPU headroom for frame generation: with the GPU at 85% or more for two windows the
-        // generated frames pause (the Thor's display fell behind near 100%: garbage strips on the
-        // lower screen in towns and Q's Factory at 120 Hz). They come back when the scene gets
-        // lighter: the GPU 12 points under its load in the first 2 s of the pause, for 2 s (leaving
-        // Q's Factory, a loading screen). Not on a timer: a retry in the same heavy scene garbled
-        // the lower screen again; and not by predicting their cost (1.6x the busy time at 60 kept
-        // town and the field at 60 for good).
+        // GPU headroom for frame generation: when the GPU runs out of capacity, generated frames
+        // pause (the Thor's display fell behind near 100%: garbage strips on the lower screen in
+        // towns and Q's Factory at 120 Hz). Capacity is busy x clock / maximum clock: busy % is
+        // relative to the current clock, and the governor often sits at 401 of 680 MHz with the
+        // GPU "86% busy" for a moment while it ramps up (Fuji City: one such sample paused
+        // generated frames). kgsl updates busy about once a second, so each sample counts once:
+        // two in a row at 80% of capacity or more pause them. They come back when the paused
+        // load, x1.6 for the generated frames, would stay under 75% (3 samples in a row); a pause
+        // soon after coming back doubles that wait (no flapping in a scene on the edge). The old
+        // rule (12 points under the paused scene's own load) never came back in a scene whose
+        // load swings: Fuji City sat at 60 for good at 49-71% busy, 401 MHz.
         {
-            static int high = 0, sampled = 0, lighter = 0, baseline = 0;
-            static double pausedSince = -1.0;
+            static int high = 0, lighter = 0, need = 3, lastBusy = -1;
+            static double pausedSince = -1.0, resumedAt = -1e9, lastSample = -1e9;
+            static const long maxHz = readNumber("/sys/class/kgsl/kgsl-3d0/max_gpuclk");
             const double now = static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
             const bool fg = presenter && presenter->frameGenerationFactor() > 1u;
-            if (!fg || s.gpuBusy < 0)
-                high = 0, pausedSince = -1.0;
+            // A new kgsl sample: the value changed, or a second has passed.
+            const bool fresh = s.gpuBusy >= 0 && (s.gpuBusy != lastBusy || now - lastSample >= 0.95);
+            if (fresh)
+                lastBusy = s.gpuBusy, lastSample = now;
+            const double load = s.gpuBusy < 0 ? -1.0
+                                : maxHz > 0 && hz > 0 ? s.gpuBusy * std::min(1.0, static_cast<double>(hz) / static_cast<double>(maxHz))
+                                                      : s.gpuBusy;
+            if (!fg || load < 0.0)
+                high = 0, lighter = 0, pausedSince = -1.0;
+            else if (!fresh)
+                ;
             else if (pausedSince < 0.0)
             {
-                high = s.gpuBusy >= 85 ? high + 1 : 0;
+                high = load >= 80.0 ? high + 1 : 0;
                 if (high >= 2)
-                    pausedSince = now, high = 0, sampled = 0, lighter = 0, baseline = 0;
-            }
-            else if (sampled < 5) // 2 s at 60 (after the window the pause began in): this scene's load
-            {
-                if (sampled++ > 0)
-                    baseline = std::max(baseline, s.gpuBusy);
+                {
+                    need = now - resumedAt < 20.0 ? std::min(need * 2, 24) : 3;
+                    pausedSince = now, high = 0, lighter = 0;
+                    if (std::getenv("RT_PERF_LOG"))
+                        std::fprintf(stderr, "[perf] generated frames paused: GPU at %.0f%% of capacity (%d%% at %d MHz)\n", load, s.gpuBusy, s.gpuMHz);
+                }
             }
             else
             {
-                lighter = s.gpuBusy <= baseline - 12 ? lighter + 1 : 0;
-                if (lighter >= 4)
-                    pausedSince = -1.0;
+                lighter = load * 1.6 < 75.0 ? lighter + 1 : 0;
+                if (lighter >= need)
+                {
+                    pausedSince = -1.0, resumedAt = now, lighter = 0;
+                    if (std::getenv("RT_PERF_LOG"))
+                        std::fprintf(stderr, "[perf] generated frames back: GPU at %.0f%% of capacity\n", load);
+                }
             }
             runtime.gsUnsynced().setGpuOverload(pausedSince >= 0.0);
             s.gpuOverload = pausedSince >= 0.0;

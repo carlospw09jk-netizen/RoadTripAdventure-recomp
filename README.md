@@ -135,7 +135,9 @@ Everything is in the in-game menu (**Options**). A few highlights:
 - **Display:** **Display mode** (Window, Borderless fullscreen or Fullscreen on Mac and Windows;
   Alt+Enter or F11 switches), aspect ratio and HUD position; **Frame rate** 60/120/240; **Frame skip** (Auto keeps
   the game at full speed on slower devices by pausing generated frames first).
-- **Graphics:** render resolution (supersampling), the upscaler, anti-aliasing and sharpness;
+- **Graphics:** **Renderer**: Hardware (default, light on the GPU) or Accurate (paraLLEl-GS, which
+  emulates the PS2's graphics chip exactly at a much higher GPU cost; takes effect at the next start);
+  render resolution (supersampling), the upscaler, anti-aliasing and sharpness;
   **Interlacing** off (default) gives a clean progressive picture.
 - **Texture pack:** choose a pack from your packs folder (see below).
 - **Second screen** (dual-screen devices) and the **performance overlay**.
@@ -147,8 +149,8 @@ Everything is in the in-game menu (**Options**). A few highlights:
 2. Edit or upscale them (any size), keeping the file names.
 3. Put them in a folder under `textures/packs/` and pick it under **Options → Texture pack**.
 
-On Android a pack is converted once to a compressed format (ASTC) the first time it's used, so it
-loads smoothly while you play.
+A pack is converted once to a compressed format the first time it's used (ASTC on Android and Mac,
+BC7 on Windows), so it loads smoothly while you play and takes a quarter of the memory.
 
 Where the folders are:
 - **macOS:** `~/Library/Application Support/RoadTripRecomp/textures/`

@@ -431,17 +431,16 @@ namespace
             std::cerr << "[presenter] Vulkan presenter unavailable (" << error << "); using raylib\n";
     }
 
-    // The hardware-rasterizer GS on the presenter's device: RT_GS_BACKEND=hw, and the default on
-    // Android (paraLLEl-GS's compute rasterizer is several times heavier on phone GPUs;
-    // RT_GS_BACKEND=pgs keeps it).
+    // The hardware-rasterizer GS on the presenter's device, the default everywhere: paraLLEl-GS's
+    // compute rasterizer is several times heavier on phone GPUs, and on desktop it took about twice
+    // the GPU time at 120 Hz (build/scratch/perf/hwgs_desktop.md, issue #19). Options -> Renderer
+    // "Accurate" ([display] renderer = "accurate") keeps paraLLEl-GS from the next start;
+    // RT_GS_BACKEND=hw|pgs|cpu wins over the setting.
     bool wantHardwareGs()
     {
-        const char *choice = std::getenv("RT_GS_BACKEND");
-#if defined(__ANDROID__)
-        return !choice || (std::string(choice) != "pgs" && std::string(choice) != "cpu");
-#else
-        return choice && std::string(choice) == "hw";
-#endif
+        if (const char *choice = std::getenv("RT_GS_BACKEND"); choice && *choice)
+            return std::string(choice) == "hw";
+        return rt::settings::current().renderer == rt::settings::Renderer::Hardware;
     }
 
     // The hardware GS in use (its pipeline preparation, prepareGraphics), or nullptr.
@@ -832,10 +831,11 @@ namespace
 
 namespace
 {
-    // A texture pack is drawn from an ASTC copy (gs_texture_pack_cache.h): no PNG decoding during
-    // play, a quarter of the memory. Its images without a current copy are converted here, before
-    // the game starts, with "Preparing texture pack" and a progress bar (once per pack; again only
-    // for images that changed). Hardware GS only (paraLLEl-GS takes the PNGs).
+    // A texture pack is drawn from a compressed copy (gs_texture_pack_cache.h: ASTC on Apple and
+    // Android, BC7 elsewhere): no PNG decoding during play, a quarter of the memory. Its images
+    // without a current copy are converted here, before the game starts, with "Getting <pack>
+    // ready" and a progress bar (once per pack; again only for images that changed). Hardware GS
+    // only (paraLLEl-GS takes the PNGs), and only when the GPU samples the format (else no step).
     void prepareTexturePack(PS2Runtime &runtime)
     {
         const std::string pack = rt::settings::texturePackDir();

@@ -125,7 +125,7 @@ Environment variables:
 | Variable | Effect |
 |---|---|
 | `RT_DATA_DIR` | Moves the data directory |
-| `RT_GS_BACKEND=cpu` | Uses the software GS instead of the Vulkan GPU GS (paraLLEl-GS on the bundled MoltenVK) |
+| `RT_GS_BACKEND=hw\|pgs\|cpu` | Chooses the GS, over Options → Renderer: `hw` the hardware GS (the default: Vulkan's rasteriser), `pgs` paraLLEl-GS ("Accurate": the GS emulated in compute shaders), `cpu` the software GS |
 | `RT_DEBUG_UI=1` | Shows the PS2Recomp debug panel at startup (F1 toggles it) |
 | `RT_THREAD_DUMP=<s>` | Prints guest threads, wait reasons and semaphores every *s* seconds |
 | `RT_FRAME_DUMP=<dir>` | Saves a PNG of the game picture every `RT_FRAME_DUMP_SECONDS` (default 2) |
@@ -135,6 +135,7 @@ Environment variables:
 | `RT_PROGRESSIVE_FIELDS=0\|1` | Overrides Options → Interlacing: 0 keeps the game's original alternating fields |
 | `RT_TEXTURE_DUMP=<dir>` | Overrides `[textures] dump` in settings.toml: saves every texture the game decodes once, as `<hash>_<W>x<H>_psm<NN>.png` |
 | `RT_TEXTURE_PACK=<dir>` | Overrides Options → Texture pack: a folder of replacement PNGs named by those hashes (any size) |
+| `RT_TEXTURE_CACHE_FORMAT=astc\|bc7\|none` | Hardware GS: the format texture packs are cached in (`<data>/textures/cache/<pack>/<hash>.astc\|.bc7`; default ASTC on Mac and Android, BC7 on Windows and Linux; none loads the PNGs). Used only if the GPU samples it |
 | `RT_ANISOTROPY=1\|2\|4\|8\|16` | Overrides `[textures] pack_anisotropy` (default 16): anisotropic filtering of texture-pack images (1 = trilinear) |
 | `RT_GS_PROGRESSIVE=0` | Uses paraLLEl-GS's field deinterlacer instead of the progressive high-resolution scanout |
 | `RT_GIF_THREAD=0` / `RT_GS_THREAD=0` | Runs GIF/VIF1/VU1 work, or the GS, on the game thread instead of their own threads (A/B checks) |
@@ -242,7 +243,7 @@ build/               (ignored)
 
 ### GPU rendering (Vulkan)
 
-- The GS (the PS2's rasterizer) runs on **paraLLEl-GS**, a Vulkan compute implementation. It lives on the fork as the submodule `ps2xRuntime/third_party/parallel-gs`.
+- The GS (the PS2's rasterizer) runs on the **hardware GS** by default (`ps2xRuntime/src/lib/gs/hw/` on the fork): Vulkan's own rasteriser drawing what Road Trip draws. Options → Graphics → Renderer "Accurate" (`[display] renderer = "accurate"`, from the next start) uses **paraLLEl-GS** instead, a Vulkan compute emulation of the whole GS, on the fork as the submodule `ps2xRuntime/third_party/parallel-gs`. Measurements: `scripts/gs_perf.py` (scripted Quick Race and a town drive in real time, both GSs, 60/120 Hz) and `build/scratch/perf/hwgs_desktop.md`. The regression suite's goldens are paraLLEl-GS pictures; the harness pins it unless `RT_GS_BACKEND` is set.
 - On macOS it runs through **MoltenVK**. The build copies `libMoltenVK.dylib` (Apache-2.0) into `RoadTrip.app/Contents/Frameworks`, so players need neither the Vulkan SDK nor Homebrew.
 - The runtime's GS front end still parses the command stream, so CSR, FINISH/SIGNAL and transfers keep working, but it mirrors the raw GIF packets and register writes to the GPU instead of rasterizing them.
 - VRAM is only copied back to the CPU when the game reads it.

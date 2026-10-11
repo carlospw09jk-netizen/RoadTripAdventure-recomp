@@ -39,6 +39,7 @@ COMPONENTS = [
     ("Snapdragon GSR", "upscaling shader (BSD-3-Clause)", "repo:third_party/PS2Recomp/ps2xRuntime/src/lib/gs/post/sgsr", ["LICENSE"]),
     ("Arm ASR", "temporal upscaler, from AMD FSR 2 (MIT)", "deps:arm_asr", ["LICENSES/MIT.txt"]),
     ("Arm ASTC Encoder", "texture pack compression (Apache-2.0)", "deps:astcenc", ["LICENSE.txt"]),
+    ("bc7enc", "texture pack compression, BC7 (MIT or public domain)", "deps:bc7enc", ["LICENSE"]),
 ]
 
 
@@ -53,8 +54,9 @@ def main():
     build, out = Path(args.build), Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    # sse2neon is fetched for ARM builds only.
-    comps = [c for c in COMPONENTS if c[0] != "sse2neon" or (build / "_deps" / "sse2neon-src").is_dir()]
+    # sse2neon is fetched for ARM builds only, bc7enc for builds other than Android.
+    optional = {"sse2neon": "sse2neon-src", "bc7enc": "bc7enc-src"}
+    comps = [c for c in COMPONENTS if c[0] not in optional or (build / "_deps" / optional[c[0]]).is_dir()]
     if args.llvm:
         comps.append(("LLVM", "the on-device compiler (clang, lld) and libc++", f"abs:{args.llvm}", ["LICENSE.TXT"]))
     if args.llvm_mingw:

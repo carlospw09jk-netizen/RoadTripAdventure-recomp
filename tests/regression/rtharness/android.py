@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import socket
 import subprocess
 import time
@@ -21,7 +22,12 @@ from pathlib import Path
 
 from . import Frame, Game, GameError
 
-PACKAGE = "io.github.silentsudin.roadtrip"
+# Device tests only ever address the separate dev app (the debug build: "Road Trip DEV"), never the
+# installed release app, whose data and saves belong to the player.
+RELEASE_PACKAGE = "io.github.silentsudin.roadtrip"
+PACKAGE = os.environ.get("RT_ANDROID_PACKAGE", RELEASE_PACKAGE + ".dev")
+if PACKAGE == RELEASE_PACKAGE:
+    raise SystemExit("rtharness.android: refusing to test against the release package " + RELEASE_PACKAGE)
 ACTIVITY = f"{PACKAGE}/io.github.roadtrip.RoadTripActivity"
 SOCKET_NAME = "roadtrip-test"
 

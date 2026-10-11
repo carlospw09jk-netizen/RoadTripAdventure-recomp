@@ -4,6 +4,10 @@
 #
 #   scripts/android/build_apk.sh            # build/android-dev, then the APK
 #   scripts/android/build_apk.sh --install  # and adb install -r
+#
+# The default (debug) build is the separate "Road Trip DEV" app, io.github.silentsudin.roadtrip.dev:
+# all device testing uses it, so the installed release app (io.github.silentsudin.roadtrip) is never
+# touched. --release builds the release package and refuses --install.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 NDK="${NDK:-/opt/homebrew/share/android-ndk}"
@@ -49,5 +53,13 @@ for a in "$@"; do [ "$a" = "--release" ] && VARIANT=release && TASK=assembleRele
 ./gradlew -q "$TASK" ${GRADLE_ARGS:-}
 APK="$ROOT/platform/android/app/build/outputs/apk/$VARIANT/app-$VARIANT.apk"
 ls -la "$APK"
-for a in "$@"; do [ "$a" = "--install" ] && adb install -r "$APK"; done
+for a in "$@"; do
+    if [ "$a" = "--install" ]; then
+        if [ "$VARIANT" = release ]; then
+            echo "refusing to install the release package from a dev checkout (it would replace the installed app)" >&2
+            exit 1
+        fi
+        adb install -r "$APK"
+    fi
+done
 true

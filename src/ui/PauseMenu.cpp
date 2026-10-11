@@ -518,6 +518,24 @@ namespace rt::ui
                                 },
                                 {}, "The radio in town: PEACH FM, E-RADIO or Off. Kept when you save your Adventure."});
             rows.push_back(heading("Graphics"));
+            // The GS renderer: chosen at startup, so a change takes effect the next time the app starts.
+            if (capabilities().gpuGs)
+            {
+                const bool running = capabilities().hardwareGs;
+                const bool pending = (s.renderer == Renderer::Hardware) != running;
+                rows.push_back({"Renderer",
+                                [&s] { return std::string(s.renderer == Renderer::Hardware ? "Hardware" : "Accurate (paraLLEl-GS)"); },
+                                [&s](int) {
+                                    s.renderer = s.renderer == Renderer::Hardware ? Renderer::Accurate : Renderer::Hardware;
+                                    changed();
+                                },
+                                {},
+                                std::string(pending ? "Restart Road Trip to switch. " : "") +
+                                    (s.renderer == Renderer::Hardware
+                                         ? "Hardware draws with your GPU directly: lighter and smoother, the best choice for most players."
+                                         : "Accurate emulates the PS2's graphics chip exactly, at a much higher GPU cost.") +
+                                    (pending ? "" : " Takes effect the next time you start Road Trip.")});
+            }
             static const std::vector<int> levels = {1, 2, 4, 8, 16};
             rows.push_back({"Supersampling (SSAA)",
                             [&s] {
@@ -563,9 +581,10 @@ namespace rt::ui
                                 changed();
                             },
                             {}, "A sharper, smoother picture. Higher settings need a faster GPU.", false, true});
-            rows.push_back({"Mipmaps", [&s] { return std::string(s.sharpTextures ? "Off (sharpest)" : "On (original)"); },
-                            [&s](int) { s.sharpTextures = !s.sharpTextures; changed(); }, {},
-                            "Off always samples the full-size texture, so distant roads and signs stay sharp.", false, true});
+            if (!capabilities().hardwareGs) // (paraLLEl-GS only: the hardware GS samples as the game asks)
+                rows.push_back({"Mipmaps", [&s] { return std::string(s.sharpTextures ? "Off (sharpest)" : "On (original)"); },
+                                [&s](int) { s.sharpTextures = !s.sharpTextures; changed(); }, {},
+                                "Off always samples the full-size texture, so distant roads and signs stay sharp.", false, true});
             if (texturePackAvailability().ok)
             {
                 // Folder names in textures/packs, rescanned at most once a second.
@@ -588,7 +607,7 @@ namespace rt::ui
                 std::string hint = packs.empty() && s.texturePack.empty()
                                        ? "None installed. Add pack folders to " + rt::paths::displayPath(packsDir)
                                        : "Swap the game's textures for a high-detail pack. Pick None for the originals.";
-                // The hardware GS draws packs from an ASTC copy: one chosen here is converted while the
+                // The hardware GS draws packs from an ASTC/BC7 copy: one chosen here is converted while the
                 // menu is open (the game is held), its progress in place of the usage line.
                 bool converting = false, ready = false;
                 g_packProgress = -1.0f;

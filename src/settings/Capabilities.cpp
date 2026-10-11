@@ -69,7 +69,7 @@ namespace rt::settings
             if (c.os != Os::MacOS)
                 return no("MetalFX is Apple's: macOS only");
             if (c.postProcess && !c.temporalInputs)
-                return no("Needs the paraLLEl-GS renderer (motion vectors)");
+                return no("Needs the GS's motion vectors and depth");
             return c.postProcess ? Availability{} : no("Needs the Vulkan presenter");
         case Upscaler::SnapdragonGsr1:
             if (c.os == Os::MacOS)

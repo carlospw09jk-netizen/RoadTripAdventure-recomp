@@ -135,7 +135,9 @@ Everything is in the in-game menu (**Options**). A few highlights:
 - **Display:** **Display mode** (Window, Borderless fullscreen or Fullscreen on Mac and Windows;
   Alt+Enter or F11 switches), aspect ratio and HUD position; **Frame rate** 60/120/240; **Frame skip** (Auto keeps
   the game at full speed on slower devices by pausing generated frames first).
-- **Graphics:** render resolution (supersampling), the upscaler, anti-aliasing and sharpness;
+- **Graphics:** **Renderer**: Hardware (default, light on the GPU) or Accurate (paraLLEl-GS, which
+  emulates the PS2's graphics chip exactly at a much higher GPU cost; takes effect at the next start);
+  render resolution (supersampling), the upscaler, anti-aliasing and sharpness;
   **Interlacing** off (default) gives a clean progressive picture.
 - **Texture pack:** choose a pack from your packs folder (see below).
 - **Second screen** (dual-screen devices) and the **performance overlay**.

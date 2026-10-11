@@ -18,6 +18,7 @@ namespace rt::settings
         constexpr std::array<const char *, 5> kAspects = {"4:3", "16:10", "16:9", "21:9", "32:9"};
         constexpr std::array<const char *, 2> kHud = {"4:3", "edges"};
         constexpr std::array<const char *, 3> kFrameModes = {"interpolate", "extrapolate", "rerender"};
+        constexpr std::array<const char *, 2> kRenderers = {"hardware", "accurate"};
         constexpr std::array<const char *, 4> kAa = {"none", "fxaa", "smaa", "taa"};
         constexpr std::array<const char *, 3> kPerfOverlay = {"off", "fps", "detailed"};
         constexpr std::array<const char *, 3> kSchemes = {"modern", "classic", "custom"};
@@ -109,6 +110,7 @@ namespace rt::settings
         s.windowHeight = std::max(224, integer(d, "height", s.windowHeight));
         s.aspect = pick(d, "aspect", kAspects, s.aspect);
         s.hud = pick(d, "hud", kHud, s.hud);
+        s.renderer = pick(d, "renderer", kRenderers, s.renderer);
         s.refreshRate = nearestOf(integer(d, "refresh_rate", s.refreshRate), {60, 120, 240});
         s.frameMode = pick(d, "frame_mode", kFrameModes, s.frameMode);
         if (d.contains("frame_skip") && d.at("frame_skip").is_string())
@@ -155,6 +157,8 @@ namespace rt::settings
           << "width = " << s.windowWidth << "\nheight = " << s.windowHeight << "\n"
           << "aspect = \"" << name(s.aspect) << "\"  # 4:3, 16:10, 16:9, 21:9, 32:9\n"
           << "hud = \"" << name(s.hud) << "\"  # 4:3 (centred) or edges (anchored to the window edges); the HUD is never stretched\n"
+          << "renderer = \"" << kRenderers[static_cast<size_t>(s.renderer)]
+          << "\"  # hardware (the GPU's rasteriser, lighter) or accurate (paraLLEl-GS); at the next start\n"
           << "refresh_rate = " << s.refreshRate << "  # 60, 120, 240 (frames between the game's 60 are generated)\n"
           << "frame_mode = \"" << kFrameModes[static_cast<size_t>(s.frameMode)] << "\"  # rerender (re-rendered from the game's geometry, no added latency); interpolate/extrapolate warp the picture (RT_FRAME_GEN=1)\n"
           << "frame_skip = \"" << (s.frameSkip ? "auto" : "off") << "\"  # auto: when the device can't keep up, generated frames pause, then drawing skips frames (the game keeps its speed); off: the game slows\n"

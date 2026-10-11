@@ -219,7 +219,8 @@ target_link_libraries(${RT_APP_TARGET} PRIVATE ps2_runtime rt_sse2neon SDL3::SDL
 if(RT_ENABLE_DEBUG_UI)
     target_sources(${RT_APP_TARGET} PRIVATE "${PS2X_RUNTIME_DIR}/src/lib/ps2_debug_panel.cpp"
                                     src/platform/input/Controllers.cpp
-                                    src/ui/ButtonGlyphs.cpp src/ui/PauseMenu.cpp src/ui/PerfOverlay.cpp src/ui/SecondScreen.cpp src/ui/SetupScreen.cpp src/ui/Theme.cpp)
+                                    src/ui/ButtonGlyphs.cpp src/ui/MapRoute.cpp src/ui/MapRouter.cpp src/ui/MapView.cpp src/ui/PauseMenu.cpp
+                                    src/ui/PerfOverlay.cpp src/ui/SecondScreen.cpp src/ui/SetupScreen.cpp src/ui/Theme.cpp)
     target_link_libraries(${RT_APP_TARGET} PRIVATE rlImGui imgui)
     target_compile_definitions(${RT_APP_TARGET} PRIVATE PS2X_ENABLE_DEBUG_UI=1)
 endif()
@@ -320,6 +321,10 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_executable(drive_feel_test tests/drive_feel_test.cpp src/game/DriveFeel.cpp)
     target_include_directories(drive_feel_test PRIVATE src)
     add_test(NAME drive_feel COMMAND drive_feel_test)
+
+    add_executable(map_router_test tests/map_router_test.cpp src/ui/MapRoute.cpp)
+    target_include_directories(map_router_test PRIVATE src)
+    add_test(NAME map_router COMMAND map_router_test)
 
     add_executable(settings_test tests/settings_test.cpp src/settings/Settings.cpp src/settings/Capabilities.cpp
         src/platform/Paths.cpp)

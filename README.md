@@ -26,8 +26,12 @@ your device, from **your own disc**, the first time you open it.
   so they add no latency.
 - **HD texture packs.** Dump the game's textures, upscale them, and load them as a pack.
 - **Save states.** Four slots with pictures, from the in-game menu.
-- **Second screen.** On dual-screen devices such as the AYN Thor, the lower screen shows the map,
-  your notebook (stamps, coins, money), the radio, and lap times in races.
+- **Second screen.** On dual-screen devices such as the AYN Thor, the lower screen shows the map
+  (in towns, field areas, on the highways and in races), your notebook (stamps, coins, money), the
+  radio, and lap times in races.
+- **Enhanced map.** On one screen, the game's minimap is replaced by a sharp one in the same
+  spot that marks Q's Factory, the shops and the places you haven't visited yet (the default with the
+  Hardware renderer; Options → Display → Map → Original brings the game's back).
 - **Modern controls.** Gas and brake on the triggers (analogue), reversing by holding brake, or the
   game's own layout, or your own. Rumble follows the road surface, the engine and collisions, and
   plays on the phone's motor when the pad has none.
@@ -138,7 +142,8 @@ strength and which controller belongs to which player under **Menu → Controlle
 Everything is in the in-game menu (**Options**). A few highlights:
 
 - **Display:** **Display mode** (Window, Borderless fullscreen or Fullscreen on Mac and Windows;
-  Alt+Enter or F11 switches), aspect ratio and HUD position; **Frame rate** 60/120/240; **Frame skip** (Auto keeps
+  Alt+Enter or F11 switches), aspect ratio and HUD position; **Map**: Enhanced (the default: sharp, with
+  places to visit marked; Hardware renderer, one screen) or the game's Original; **Frame rate** 60/120/240; **Frame skip** (Auto keeps
   the game at full speed on slower devices by pausing generated frames first).
 - **Graphics:** **Renderer**: Hardware (default, light on the GPU) or Accurate (paraLLEl-GS, which
   emulates the PS2's graphics chip exactly at a much higher GPU cost; takes effect at the next start);

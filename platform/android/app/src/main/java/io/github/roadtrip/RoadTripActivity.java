@@ -76,6 +76,7 @@ public class RoadTripActivity extends SDLActivity {
 
     private Presentation secondScreen;
     private volatile boolean secondScreenEnabled = true; // Options → Second screen
+    private int secondScreenRetries = 0; // show() failures in a row (retried, a second apart)
 
     /** From native code (any thread): Options → Second screen. Off gives the display back to Android. */
     public void setSecondScreenEnabled(boolean on) {
@@ -143,8 +144,13 @@ public class RoadTripActivity extends SDLActivity {
         try {
             presentation.show();
             secondScreen = presentation;
+            secondScreenRetries = 0;
         } catch (RuntimeException e) {
-            // The display went away (or can't take a window): no second screen.
+            // The display went away, or can't take a window yet (it is still coming up): tried
+            // again a few times, a second apart, then no second screen (the map stays on top).
+            if (secondScreenEnabled && ++secondScreenRetries <= 5) {
+                getWindow().getDecorView().postDelayed(this::showSecondScreen, 1000);
+            }
         }
     }
 

@@ -6,6 +6,8 @@
 #include "game/GameStats.h"
 #include "platform/Host.h"
 #include "platform/SecondDisplay.h"
+#include "ui/MapRouter.h"
+#include "ui/MapView.h"
 #include "ui/PauseMenu.h"
 #include "ui/Theme.h"
 
@@ -69,16 +71,8 @@ namespace rt::ui
             return io.MouseDown[0] && inside(io.MousePos, min, max) && inside(io.MouseClickedPos[0], min, max);
         }
 
-        // Text with the game's navy outline.
-        void outlined(ImDrawList *dl, ImVec2 pos, float size, ImU32 colour, const char *s, float o = 0)
-        {
-            o = o > 0 ? o : std::max(1.0f, th::px(3));
-            static const ImVec2 dirs[8] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-0.7f, -0.7f}, {0.7f, -0.7f}, {-0.7f, 0.7f}, {0.7f, 0.7f}};
-            for (const ImVec2 &d : dirs)
-                dl->AddText(th::font(), size, ImVec2(pos.x + d.x * o, pos.y + d.y * o), c::Outline, s);
-            dl->AddText(th::font(), size, pos, colour, s);
-        }
-        ImVec2 measure(float size, const char *s) { return th::font()->CalcTextSizeA(size, FLT_MAX, 0, s); }
+        using mapview::measure;
+        using mapview::outlined;
         float body() { return th::px(32); }
         float heading() { return th::px(44); }
         float tag() { return th::px(24); }
@@ -139,112 +133,6 @@ namespace rt::ui
             if (best == std::string::npos)
                 return {text};
             return {text.substr(0, best), text.substr(best + 1)};
-        }
-
-        // ---- the map ----
-
-        // The game's own map (drawn apart from the picture by the hardware GS, without its bezel),
-        // as large as fits (its layer is drawn at 4x, sampled smoothly), in a gold plate rim.
-        // Where the map went on screen (for markers).
-        struct MapPlacement
-        {
-            ImVec2 a, b; // the map image's corners
-        };
-
-        bool drawMap(ImDrawList *dl, ImVec2 min, ImVec2 max, ps2x::HostPresenter &presenter, bool centre, ImVec2 *placed = nullptr,
-                     bool inset = false, MapPlacement *where = nullptr)
-        {
-            float uv[4], aspect = 1.0f;
-            if (!presenter.mapRegion(uv, aspect) || aspect <= 0.0f)
-                return false;
-            // Widescreen draws the HUD (the map with it) narrower by (4:3) / the display's shape,
-            // to look right once stretched: undo that here.
-            aspect /= std::min(1.0f, (4.0f / 3.0f) / std::max(presenter.displayAspect(), 0.1f));
-            if (!inset) // the margin below widens the shown part
-            {
-                const float bw = std::max(1.0f, (uv[2] - uv[0]) * 640.0f), bh = std::max(1.0f, (uv[3] - uv[1]) * 224.0f);
-                aspect *= ((bw + 4.0f) / bw) / ((bh + 2.0f) / bh);
-            }
-            const float rim = th::px(6);
-            const float w = max.x - min.x - rim * 2, h = max.y - min.y - rim * 2;
-            const float dw = std::floor(std::min(w, h * aspect)), dh = std::floor(dw / aspect);
-            const ImVec2 a(centre ? std::floor(min.x + rim + (w - dw) * 0.5f) : min.x + rim, std::floor(min.y + rim + (h - dh) * 0.5f));
-            const ImVec2 b(a.x + dw, a.y + dh);
-            dl->AddRectFilled(ImVec2(a.x - rim, a.y - rim), ImVec2(b.x + rim, b.y + rim), IM_COL32(0xE8, 0xC8, 0x30, 0xFF), th::px(16));
-            dl->AddRect(ImVec2(a.x - rim * 0.5f, a.y - rim * 0.5f), ImVec2(b.x + rim * 0.5f, b.y + rim * 0.5f), IM_COL32(0xFF, 0xF0, 0xA0, 0xFF),
-                        th::px(12), 0, th::px(3));
-            // Inside the rim's rounded corners; the town map a field pixel in from its box (the
-            // game's bezel and scissor edge show there; a race map's box is its own extent).
-            // A race map's box is the track's extent plus 4 GS pixels (fixed for the race by the
-            // GS); a little more of the layer's background keeps the track off the rim.
-            const float du = inset ? 1.0f / 640.0f : -2.0f / 640.0f, dv = inset ? 1.0f / 224.0f : -1.0f / 224.0f;
-            dl->AddImageRounded(static_cast<ImTextureID>(ps2x::HostPresenter::kMapTexture), a, b, ImVec2(uv[0] + du, uv[1] + dv),
-                                ImVec2(uv[2] - du, uv[3] - dv), IM_COL32_WHITE, th::px(12));
-            if (placed)
-                *placed = ImVec2(b.x + rim, b.y + rim);
-            if (where)
-                *where = {a, b};
-            return true;
-        }
-
-        // ---- places on the town map ----
-
-        // Marks on the town map: Q's Factory, the shops, Quick-Pic Shops not used yet and houses
-        // not visited yet, where the game's minimap puts them (projected like the game does; the
-        // town map's box is its scissor, 46..158 x 157..207 shown, whatever widescreen did to it).
-        void drawPlaces(ImDrawList *dl, const MapPlacement &m, const rt::game::Stats &st, const std::vector<rt::game::Place> &places)
-        {
-            constexpr float kX0 = 46, kX1 = 158, kY0 = 157, kY1 = 207;
-            dl->PushClipRect(m.a, m.b, true);
-            const float r = th::px(13);
-            for (const auto &pl : places)
-            {
-                using K = rt::game::Place::Kind;
-                if ((pl.kind == K::PhotoBooth || pl.kind == K::House) && pl.done)
-                    continue;
-                if (pl.kind == K::Other)
-                    continue;
-                float fx, fy;
-                rt::game::mapPoint(st, pl.x, pl.z, fx, fy);
-                if (fx < kX0 - 4 || fx > kX1 + 4 || fy < kY0 - 4 || fy > kY1 + 4)
-                    continue;
-                const ImVec2 c(m.a.x + (fx - kX0) / (kX1 - kX0) * (m.b.x - m.a.x), m.a.y + (fy - kY0) / (kY1 - kY0) * (m.b.y - m.a.y));
-                switch (pl.kind)
-                {
-                case K::Factory:
-                {
-                    dl->AddCircleFilled(c, r * 1.25f, IM_COL32(0xE8, 0x84, 0x0C, 0xFF), 20);
-                    dl->AddCircle(c, r * 1.25f, IM_COL32(0xFF, 0xD8, 0x78, 0xFF), 20, th::px(3));
-                    const ImVec2 sz = measure(tag(), "Q");
-                    outlined(dl, ImVec2(c.x - sz.x * 0.5f, c.y - sz.y * 0.5f), tag(), c::Value, "Q", th::px(2));
-                    break;
-                }
-                case K::Shop:
-                {
-                    const char t[2] = {pl.letter, 0};
-                    dl->AddRectFilled(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), IM_COL32(0x1C, 0xA1, 0xE6, 0xFF), th::px(6));
-                    dl->AddRect(ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), c::Value, th::px(6), 0, th::px(2));
-                    const ImVec2 sz = measure(tag(), t);
-                    outlined(dl, ImVec2(c.x - sz.x * 0.5f, c.y - sz.y * 0.5f), tag(), c::Value, t, th::px(2));
-                    break;
-                }
-                case K::PhotoBooth:
-                {
-                    // A little camera: body, lens, flash.
-                    const ImU32 pink = IM_COL32(0xF0, 0x48, 0xA8, 0xFF);
-                    dl->AddRectFilled(ImVec2(c.x - r, c.y - r * 0.7f), ImVec2(c.x + r, c.y + r * 0.75f), pink, th::px(4));
-                    dl->AddRectFilled(ImVec2(c.x - r * 0.4f, c.y - r), ImVec2(c.x + r * 0.2f, c.y - r * 0.6f), pink, th::px(2));
-                    dl->AddCircleFilled(ImVec2(c.x, c.y + r * 0.05f), r * 0.45f, c::Value, 16);
-                    dl->AddCircleFilled(ImVec2(c.x, c.y + r * 0.05f), r * 0.25f, IM_COL32(0x1A, 0x3C, 0x8C, 0xFF), 16);
-                    break;
-                }
-                default: // a house still to visit
-                    dl->AddCircleFilled(c, r * 0.55f, c::Value, 16);
-                    dl->AddCircle(c, r * 0.55f, IM_COL32(0x1A, 0x3C, 0x8C, 0xFF), 16, th::px(2));
-                    break;
-                }
-            }
-            dl->PopClipRect();
         }
 
         // ---- the column beside the map ----
@@ -626,6 +514,38 @@ namespace rt::ui
             }
         }
 
+        // A stamp earned while the map is up: a card along the bottom of the map page for a moment
+        // (the map stays; the notebook has it afterwards).
+        void stampToast(ImDrawList *dl, ImVec2 min, ImVec2 max, ps2x::HostPresenter &presenter, PS2Runtime &runtime, int n, float since)
+        {
+            const float t = std::clamp(since / 0.25f, 0.0f, 1.0f); // slides up
+            const float h = max.y - min.y, drop = (1.0f - t) * (h + th::px(24));
+            const ImVec2 kmin(min.x, min.y + drop), kmax(max.x, max.y + drop);
+            dl->AddRectFilled(ImVec2(kmin.x, kmin.y + th::px(8)), ImVec2(kmax.x, kmax.y + th::px(8)), c::Shadow, th::px(20));
+            dl->AddRectFilled(kmin, kmax, c::PaperRim, th::px(20));
+            dl->AddRectFilled(ImVec2(kmin.x + th::px(6), kmin.y + th::px(6)), ImVec2(kmax.x - th::px(6), kmax.y - th::px(6)), c::Paper, th::px(14));
+            const float glow = 0.5f + 0.5f * std::sin(since * 6.0f);
+            dl->AddRect(ImVec2(kmin.x - th::px(4), kmin.y - th::px(4)), ImVec2(kmax.x + th::px(4), kmax.y + th::px(4)),
+                        IM_COL32(0xF8, 0xC8, 0x38, static_cast<int>(120 + 135 * glow)), th::px(22), 0, th::px(6));
+            const float icon = h - th::px(24);
+            const ImVec2 fmin(kmin.x + th::px(14), kmin.y + th::px(12)), fmax(fmin.x + icon, fmin.y + icon);
+            dl->AddRectFilled(fmin, fmax, c::Frame, th::px(12));
+            const StampIcons ic = stampIcons(presenter, n);
+            if (ic.ink)
+            {
+                const float s = std::clamp(since / 0.8f, 0.0f, 1.0f);
+                dl->AddImage(static_cast<ImTextureID>(ic.ink), fmin, fmax, ImVec2(0, 0), ImVec2(1, 1),
+                             IM_COL32(0xFF, 0xFF, 0xFF, static_cast<int>(255 * s)));
+            }
+            const float tx = fmax.x + th::px(20);
+            outlined(dl, ImVec2(tx, kmin.y + th::px(14)), body(), kGold, "New stamp!");
+            std::string caption = rt::game::stampCaption(runtime, n);
+            if (caption.empty())
+                caption = "Stamp " + std::to_string(n);
+            dl->AddText(th::font(), body(), ImVec2(tx, kmin.y + th::px(14) + body() * 1.2f), c::Ink,
+                        ellipsize(caption, body(), kmax.x - th::px(20) - tx).c_str());
+        }
+
         // ---- the screen ----
 
         enum class Page { Map, Notebook, Radio };
@@ -741,19 +661,14 @@ namespace rt::ui
             ps2x::HostPresenter &presenter = *runtime.presenter();
             const rt::game::Stats st = rt::game::readStats(runtime);
             float uv[4], aspect;
-            // The attract demo leaves both screens alone: its map stays on top.
-            // Only while driving or racing: in buildings, Q's Factory and dialogues other drawings
-            // can match the map's signature, and junk showed (and the page flicked to Map).
-            // The drive flag drops for single frames while driving, and each drop sent the map back
-            // to the top screen for a frame (both screens flashed): a change has to hold 0.5 s.
-            const bool mapTimeNow = st.racing || (st.inTown && st.canDrive); // not Q's Factory either
-            static bool mapTime = false;
-            static double mapTimeSince = 0;
-            if (mapTimeNow == mapTime)
-                mapTimeSince = ImGui::GetTime();
-            else if (ImGui::GetTime() - mapTimeSince > 0.5)
-                mapTime = mapTimeNow;
-            const bool haveMap = !st.demo && mapTime && presenter.mapRegion(uv, aspect);
+            // The map is here whenever the router sent it here (MapRouter: the second screen is on
+            // and the player didn't move Map away; never in the attract demo) and the GS has one
+            // on hand: a frame of the game's drew it. "A map is up" is the GS's own signal too
+            // (game frames drawing the map, wherever it went), so town, fields, highways and races
+            // all count, without the game's state flags.
+            const bool here = maprouter::destination() == maprouter::Destination::SecondScreen;
+            const bool haveMap = here && presenter.mapRegion(uv, aspect);
+            const bool mapUp = maprouter::mapUp();
             const float now = static_cast<float>(ImGui::GetTime());
 
             // A stamp earned just now (one new bit; loading a save changes many): show it.
@@ -777,39 +692,34 @@ namespace rt::ui
             }
             else
                 seenValid = false;
-            const bool showingNewStamp = now - g_newStampAt < 3.5f;
+            const bool newStamp = now - g_newStampAt < 3.5f && !g_recent.empty();
 
-            // The page follows the game (the map while driving or racing), unless a tap chose. A
-            // change of context has to hold for a moment first: cuts and loads don't flash pages.
-            // When the player chose a page other than Map, the map goes back to the top screen, so
-            // haveMap turns false: that's the choice, not a change of context (taken as one, it
-            // undid the choice 0.75 s later and stepped Radio -> Notebook -> Map). Keep the last
-            // context while the map is handed away.
-            static bool mapContext = false;
-            const bool mapHandedAway = g_overridden && g_chosen != Page::Map;
-            if (!mapHandedAway || st.racing)
-                mapContext = haveMap || st.racing;
+            // The page follows the game (Map while it shows a map or races, else the notebook),
+            // unless a tap chose another, until the context changes. Map comes at once (the map
+            // has just left the top screen); back to the notebook only once the game has drawn no
+            // map for a while (MapRouter::kRecent): fades, cuts and loads don't flick pages. While
+            // the player has the map handed back to the top screen it is still drawn: that's the
+            // choice, not a change of context.
+            const bool mapContext = mapUp || st.racing;
             const Page wanted = mapContext ? Page::Map : Page::Notebook;
-            static Page candidate = Page::Notebook;
-            static float candidateSince = 0;
-            if (wanted != candidate)
-                candidate = wanted, candidateSince = now;
-            if (candidate != g_auto && now - candidateSince > 0.75f)
-                g_auto = candidate, g_overridden = false;
-            // The new stamp takes the screen for a moment, whatever was on it (the map stays down).
-            const Page page = showingNewStamp ? Page::Notebook : g_overridden ? g_chosen : g_auto;
-            // Keep the map on the second screen unless the player chose the notebook over it.
-            presenter.setWantMap(!st.demo && mapTime && !(g_overridden && g_chosen != Page::Map));
+            if (wanted != g_auto)
+                g_auto = wanted, g_overridden = false;
+            // A new stamp takes the screen for a moment, unless the map is up: then it shows on the
+            // map page (the map stays put).
+            const Page chosen = g_overridden ? g_chosen : g_auto;
+            const Page page = newStamp && !(chosen == Page::Map && haveMap) ? Page::Notebook : chosen;
             // RT_SECOND_DEBUG=1: a line whenever what decides the page changes.
             {
                 static const bool debug = [] { const char *e = std::getenv("RT_SECOND_DEBUG"); return e && *e == '1'; }();
                 static std::string last;
                 if (debug)
                 {
-                    char line[200];
-                    std::snprintf(line, sizeof(line), "racing %d town %d drive %d demo %d mapTime %d haveMap %d context %d page %d auto %d chosen %d/%d",
-                                  st.racing, st.inTown, st.canDrive, st.demo, mapTime, haveMap, mapContext, static_cast<int>(page),
-                                  static_cast<int>(g_auto), g_overridden, static_cast<int>(g_chosen));
+                    char line[400];
+                    std::snprintf(line, sizeof(line),
+                                  "racing %d town %d drive %d demo %d here %d haveMap %d up %d page %d auto %d chosen %d/%d | %s",
+                                  st.racing, st.inTown, st.canDrive, st.demo, here, haveMap, mapUp, static_cast<int>(page),
+                                  static_cast<int>(g_auto), g_overridden, static_cast<int>(g_chosen),
+                                  rt::game::stateWords(runtime.memory().getRDRAM()).c_str());
                     if (last != line)
                     {
                         last = line;
@@ -835,7 +745,7 @@ namespace rt::ui
                 if (tabs[i].first != page)
                 {
                     const auto [tmin, tmax] = tabRect(i, false);
-                    idleTab(dl, tmin, tmax, tabs[i].second, tabs[i].first == Page::Map && !haveMap && !st.racing);
+                    idleTab(dl, tmin, tmax, tabs[i].second, tabs[i].first == Page::Map && !mapUp && !st.racing);
                     if (tapped(tmin, tmax))
                         g_chosen = tabs[i].first, g_overridden = true;
                 }
@@ -874,42 +784,48 @@ namespace rt::ui
             }
             const float colW = th::px(250);
             const bool column = st.racing || st.inTown;
+            ps2x::HostPresenter::MapInfo info;
+            presenter.mapInfo(info);
             ImVec2 mapEnd;
-            MapPlacement where;
-            const bool drawn =
-                drawMap(dl, cmin, ImVec2(column ? cmax.x - colW - th::px(24) : cmax.x, cmax.y), presenter, !column, &mapEnd, !st.racing, &where);
-            // The town's buildings, once per town (the tables don't change).
-            static int placesTile = -1;
-            static std::vector<rt::game::Place> places;
-            static float placesAt = 0;
-            if (st.inTown && (st.tile != placesTile || now - placesAt > 1.0f)) // done-ness changes as you play
-            {
-                places = rt::game::placesAround(runtime, st);
-                placesTile = st.tile;
-                placesAt = now;
-            }
+            mapview::Placement where;
+            // The town's (and field areas') window map a pixel in from its box; a course map whole.
+            const bool drawn = haveMap && mapview::drawMap(dl, cmin, ImVec2(column ? cmax.x - colW - th::px(24) : cmax.x, cmax.y), presenter,
+                                                           !column, &mapEnd, info.kind == 1, &where);
+            const std::vector<rt::game::Place> &places =
+                st.inTown ? mapview::placesFor(runtime, st, now) : std::vector<rt::game::Place>{};
             if (drawn && st.inTown)
-                drawPlaces(dl, where, st, places);
+                mapview::drawPlaces(dl, where, st, places, th::px(13));
             if (!drawn && st.racing)
                 bigPlace(dl, cmin, ImVec2(cmax.x - colW - th::px(24), cmax.y), st);
             else if (!drawn)
             {
-                const char *msg = "The map shows here while you drive in a town or race.";
+                const char *msg = mapUp && !here ? "The map is on the top screen." : "The map shows here while you drive or race.";
                 const ImVec2 sz = measure(body(), msg);
                 outlined(dl, ImVec2((cmin.x + cmax.x - sz.x) * 0.5f, (cmin.y + cmax.y - sz.y) * 0.5f), body(), c::Label, msg);
-                return;
             }
-            if (!column)
-                return;
-            // The column takes the room the map leaves (centred in it).
-            const float left = drawn ? mapEnd.x + th::px(32) : cmax.x - colW;
-            const float w = std::min(colW + th::px(160), cmax.x - left);
-            if (st.racing)
-                raceColumn(dl, left, cmin.y, w, st);
-            else
-                townColumn(dl, left, cmin.y, w, cmax.y, st, places);
+            else if (column)
+            {
+                // The column takes the room the map leaves (centred in it).
+                const float left = mapEnd.x + th::px(32);
+                const float w = std::min(colW + th::px(160), cmax.x - left);
+                if (st.racing)
+                    raceColumn(dl, left, cmin.y, w, st);
+                else
+                    townColumn(dl, left, cmin.y, w, cmax.y, st, places);
+            }
+            if (!drawn && st.racing && column)
+                raceColumn(dl, cmax.x - colW, cmin.y, std::min(colW + th::px(160), colW), st);
+            // A stamp earned while the map is up: a card over the page's bottom.
+            if (newStamp && drawn)
+            {
+                const float h = th::px(120);
+                stampToast(dl, ImVec2(cmin.x + th::px(40), cmaxAll.y - h), ImVec2(cmaxAll.x - th::px(40), cmaxAll.y), presenter, runtime,
+                           g_recent.front(), now - g_newStampAt);
+            }
         }
     }
+
+    bool secondScreenHandsMapAway() { return g_overridden && g_chosen != Page::Map; }
 
     void updateSecondScreen(PS2Runtime &runtime)
     {
@@ -927,10 +843,7 @@ namespace rt::ui
         const auto touches = rt::seconddisplay::takeTouches();
         int w = 0, h = 0;
         if (!presenter->secondScreenSize(w, h) || !ImGui::GetCurrentContext())
-        {
-            presenter->setWantMap(false); // the game's map stays on the main screen
-            return;
-        }
+            return; // (the map router sends the map elsewhere if this lasts)
 
         // At most 30 pictures a second (at once for a touch): the panel keeps the last one, and
         // drawing it after every main-screen present (120 a second with generated frames) cost the

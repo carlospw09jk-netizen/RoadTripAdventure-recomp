@@ -442,6 +442,17 @@ namespace rt::ui
                                 [&s](int d) { cycle(s.hud, huds, d); changed(); }, {},
                                 "Speedometer, map and timers: inside the centred 4:3 area or at the screen edges.", false, true});
             }
+            // The map on the main screen (the hardware GS draws the game's map apart: MapRouter). Not
+            // listed while a second screen shows the map.
+            if (capabilities().hardwareGs && !(capabilities().secondDisplay && s.secondScreen))
+                rows.push_back({"Map", [&s] { return std::string(s.map == MapMode::Enhanced ? "Enhanced" : "Original"); },
+                                [&s](int) {
+                                    s.map = s.map == MapMode::Enhanced ? MapMode::Game : MapMode::Enhanced;
+                                    changed();
+                                },
+                                {},
+                                "Enhanced: a sharper map that marks Q's Factory, the shops, the Quick-Pic Shops you haven't used and "
+                                "the houses you haven't visited (in races, the sharper course map). Original: the game's own."});
             if (refreshAvailability(capabilities(), 120).ok)
             {
                 static const std::vector<int> rates = {60, 120, 240};

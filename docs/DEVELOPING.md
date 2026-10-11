@@ -65,7 +65,12 @@ How it differs from the Mac build:
 - The test socket is TCP on the loopback here: `RT_TEST_SOCKET=tcp:<port>` (port 0 picks one and
   prints it); Python on Windows has no `AF_UNIX`.
 - The icon is the same picture as macOS's and Android's: `scripts/make_android_icon.py` writes `platform/windows/RoadTrip.ico` (16-256 px, from the macOS 1024 px master) and the exe embeds it (`platform/windows/RoadTrip.rc.in`); SDL takes the exe's first icon for the window and taskbar.
-- Data and saves: `%LOCALAPPDATA%\RoadTripRecomp` (`RT_DATA_DIR` overrides).
+- Data and saves: `%LOCALAPPDATA%\RoadTripRecomp` (`RT_DATA_DIR` overrides). Portable mode: a
+  `portable.txt` beside `RoadTrip.exe` (the release's `-portable.zip` has it) moves everything to
+  `<exe folder>\data`, which also becomes TMP/TEMP's parent (`data\tmp`) and the working directory;
+  an unwritable folder stops at start with a message. Everything resolves through
+  `rt::paths::dataRoot()` (`src/platform/Paths.cpp`; the rule is `chooseDataRoot`, unit test
+  `paths_test`): never write anywhere else.
 
 ### Upscaler plugins (Windows)
 

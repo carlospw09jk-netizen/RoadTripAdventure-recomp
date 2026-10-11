@@ -70,6 +70,11 @@ Download the latest **zip** (Windows), **DMG** (Mac) or **APK** (Android) from
 an unsigned app: *More info → Run anyway*. Settings, saves and the game built on your PC live in
 `%LOCALAPPDATA%\RoadTripRecomp`. AMD FSR 3 is included and works on any GPU.
 
+*Portable:* `RoadTripRecomp-<version>-Windows-x64-portable.zip` is the same app, but it keeps all its
+data in a `data` folder next to `RoadTrip.exe` (that's what its `portable.txt` does), so the folder
+must be writable; move or copy the folder and everything goes with it. Only your graphics driver's
+shader cache and Windows' own records (such as the file picker's recent folders) end up elsewhere.
+
 *Optional, for NVIDIA DLSS and Intel XeSS:* download `RoadTripRecomp-<version>-Windows-x64-DLSS-XeSS-addon.zip`
 from the same release and unzip its files **into the same folder as `RoadTrip.exe`** (next to
 `rt_fsr3.dll`; say yes to merging the `licenses` folder). They are a separate download because
@@ -163,7 +168,8 @@ Where the folders are:
   your disc), `game/` (the game built from them), `saves/` (memory cards), `states/` (save states)
   and `settings.toml`.
 - **Windows:** `%LOCALAPPDATA%\RoadTripRecomp`, with the same contents as on macOS (open it with
-  `%LOCALAPPDATA%` in the Explorer address bar). Texture packs go in `textures\packs`.
+  `%LOCALAPPDATA%` in the Explorer address bar); the portable zip's is the `data` folder next to
+  `RoadTrip.exe`. Texture packs go in `textures\packs`.
 - **Android:** the app's own storage; texture packs and dumps as above.
 
 **Don't share anything from these folders except your own texture packs:** they hold the game's

@@ -126,7 +126,12 @@ namespace
 
         int instanceExtensions(const char *const **names, uint32_t *count)
         {
-            g_dataDir = L".";
+            // Before init: no app data folder yet. The temp folder, not the working directory (a
+            // portable copy points TMP into its own folder).
+            std::wstring tmp(32768, wchar_t(0));
+            const DWORD len = GetTempPathW(static_cast<DWORD>(tmp.size()), tmp.data());
+            tmp.resize(len < tmp.size() ? len : 0);
+            g_dataDir = tmp.empty() ? std::wstring(L".") : tmp;
             setupPaths();
             const NVSDK_NGX_FeatureDiscoveryInfo d = discovery();
             uint32_t n = 0;

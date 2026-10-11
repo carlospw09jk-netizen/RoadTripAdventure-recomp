@@ -3,7 +3,8 @@
 #
 # - Push to main (a merged pull request): builds both and, once both have built, tags the commit
 #   vX.Y.Z (GitVersion's MAJOR.MINOR.PATCH) and publishes a GitHub Release with the DMG, the APK
-#   and the Windows zip (`gh release create --generate-notes`: notes from the merged pull requests).
+#   and the Windows zips (installed-style, portable and the DLSS/XeSS add-on; `gh release create
+#   --generate-notes`: notes from the merged pull requests).
 # - Pull request: builds both, attached to the run as artifacts.
 # - Push a tag vX.Y.Z, or run manually with "release" ticked: the same release, for that commit.
 #
@@ -244,7 +245,7 @@ jobs:
         run: |
           export PATH="$LLVM_MINGW_ROOT/bin:$PATH"
           # The preset builds only the app bundle and iso_reader_test; the other tests are built here.
-          cmake --build build/windows-release --target input_test drive_feel_test settings_test wide_layout_test
+          cmake --build build/windows-release --target input_test drive_feel_test settings_test paths_test wide_layout_test
           ctest --preset windows-release
       - name: No game code in the app
         run: |
@@ -282,8 +283,21 @@ jobs:
           # FSR 3 (MIT) with AMD's signed DLL, and its licence.
           cp build/plugins/rt_fsr3.dll build/plugins/amd_fidelityfx_vk.dll "$out/"
           cp build/sdks/ffx/LICENSE.txt "$out/Resources/licenses/FidelityFX-SDK-LICENSE.txt"
+          # The portable copy: the same files plus the marker, so all its data stays in <folder>\data.
+          portable="$out-portable"
+          cp -r "$out" "$portable"
+          cat > "$portable/portable.txt" <<'EOF'
+          This copy of Road Trip Recomp is portable: it keeps everything it writes (settings, saves,
+          save states, the game it builds from your disc, textures, caches) in the "data" folder
+          next to RoadTrip.exe, never in %LOCALAPPDATA%. Move or copy this whole folder to take it
+          all with you. The folder must be writable (not Program Files).
+
+          Delete this file to use %LOCALAPPDATA%\RoadTripRecomp instead, like the installed zip.
+          EOF
           7z a -tzip -mx=5 "$out.zip" "$out" > /dev/null
           ls -l "$out.zip"
+          7z a -tzip -mx=5 "$portable.zip" "$portable" > /dev/null
+          ls -l "$portable.zip"
           # The add-on: unzip beside RoadTrip.exe. Each vendor's licence travels with its binaries.
           addon="RoadTripRecomp-$SEMVER-Windows-x64-DLSS-XeSS-addon"
           mkdir -p "$addon/licenses"
@@ -305,6 +319,7 @@ jobs:
           name: windows-zip
           path: |
             RoadTripRecomp-*-Windows-x64.zip
+            RoadTripRecomp-*-Windows-x64-portable.zip
             RoadTripRecomp-*-Windows-x64-DLSS-XeSS-addon.zip
 
   release:

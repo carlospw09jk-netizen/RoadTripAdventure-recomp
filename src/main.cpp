@@ -379,6 +379,25 @@ namespace
         return fs::exists(bundled, ec) ? bundled.string() : std::string();
     }
 
+    // ImGui's window positions live with the other settings (its default is imgui.ini in the
+    // working directory). Set on every context the app's UI uses.
+    [[maybe_unused]] const char *imguiIniPath()
+    {
+        static const std::string ini = (rt::paths::dataRoot() / "imgui.ini").string();
+        return ini.c_str();
+    }
+
+    // The upscaler plugins' own logs and caches (NGX's application data path).
+    std::string upscalerDataDir()
+    {
+        const fs::path dir = rt::paths::dataRoot() / "upscalers";
+#if defined(_WIN32) // the only platform with plugins
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+#endif
+        return dir.string();
+    }
+
     // The Vulkan presenter, opened before the runtime exists for the setup screen (Android has one
     // window per activity, so setup can't have a window of its own). Null if unavailable.
     ps2x::HostPresenter *setupPresenter()
@@ -389,6 +408,7 @@ namespace
             ps2x::gs::PgsPresenterOptions options;
             options.vulkanLibrary = vulkanLibrary();
             options.vsync = rt::settings::current().vsync;
+            options.dataDir = upscalerDataDir();
             std::string error;
             auto presenter = ps2x::gs::createPgsPresenter(options, error);
             if (!presenter || !presenter->open("Road Trip Adventure", 1280, 720))
@@ -397,6 +417,7 @@ namespace
                 return nullptr;
             }
             presenter->uiInit();
+            ImGui::GetIO().IniFilename = imguiIniPath(); // not imgui.ini in the working directory
             SDL_InitSubSystem(SDL_INIT_GAMEPAD); // the setup screens take a controller's confirm button (through ImGui)
             rt::ui::theme::initialize();
             ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard;
@@ -424,6 +445,7 @@ namespace
         ps2x::gs::PgsPresenterOptions options;
         options.vulkanLibrary = vulkanLibrary();
         options.vsync = rt::settings::current().vsync;
+        options.dataDir = upscalerDataDir();
         std::string error;
         if (auto presenter = ps2x::gs::createPgsPresenter(options, error))
             runtime.setPresenter(std::move(presenter));
@@ -918,7 +940,24 @@ int main(int argc, char *argv[])
                 ps2x::setEnv(line.substr(0, eq).c_str(), line.substr(eq + 1).c_str());
     }
 #endif
-    const Options opts = parseArgs(argc, argv);
+    Options opts = parseArgs(argc, argv);
+    // Portable copy (Windows: portable.txt beside RoadTrip.exe): everything in <exe folder>/data,
+    // which becomes the working directory, so a relative --rom is resolved first.
+    if (rt::paths::portable())
+    {
+        std::error_code ec;
+        if (opts.rom)
+            if (fs::path abs = fs::absolute(*opts.rom, ec); !ec)
+                opts.rom = abs;
+        std::string error;
+        if (!rt::paths::preparePortable(error))
+        {
+            std::cerr << "[paths] " << error << "\n";
+            rt::dialogs::message("Road Trip can't write to its folder", error);
+            return 1;
+        }
+        std::cout << "[paths] portable: data in " << rt::paths::dataRoot().string() << "\n";
+    }
 
     try
     {
@@ -956,8 +995,7 @@ int main(int argc, char *argv[])
                 ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad | ImGuiConfigFlags_NavEnableKeyboard;
                 rt::ui::theme::initialize(); // the game's look: fonts and colours
                 // Window positions live with the other settings, not in the working directory.
-                static const std::string ini = (rt::paths::dataRoot() / "imgui.ini").string();
-                ImGui::GetIO().IniFilename = ini.c_str();
+                ImGui::GetIO().IniFilename = imguiIniPath();
                 const char *env = std::getenv("RT_DEBUG_UI");
                 panel.setVisible(env && *env && *env != '0');
 #endif

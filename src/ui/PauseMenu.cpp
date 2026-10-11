@@ -607,7 +607,7 @@ namespace rt::ui
                 std::string hint = packs.empty() && s.texturePack.empty()
                                        ? "None installed. Add pack folders to " + rt::paths::displayPath(packsDir)
                                        : "Swap the game's textures for a high-detail pack. Pick None for the originals.";
-                // The hardware GS draws packs from an ASTC copy: one chosen here is converted while the
+                // The hardware GS draws packs from an ASTC/BC7 copy: one chosen here is converted while the
                 // menu is open (the game is held), its progress in place of the usage line.
                 bool converting = false, ready = false;
                 g_packProgress = -1.0f;

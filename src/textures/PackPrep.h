@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// Converting a texture pack to its ASTC cache (gs_texture_pack_cache.h) from the menu: a pack
+// Converting a texture pack to its ASTC/BC7 cache (gs_texture_pack_cache.h) from the menu: a pack
 // chosen there is converted while the menu holds the game (never during play), with its progress
 // in the Texture pack row; closing the menu stops it, and what is left converts at the next start.
 namespace rt::textures::packprep

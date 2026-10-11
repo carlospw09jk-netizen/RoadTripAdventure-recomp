@@ -831,10 +831,11 @@ namespace
 
 namespace
 {
-    // A texture pack is drawn from an ASTC copy (gs_texture_pack_cache.h): no PNG decoding during
-    // play, a quarter of the memory. Its images without a current copy are converted here, before
-    // the game starts, with "Preparing texture pack" and a progress bar (once per pack; again only
-    // for images that changed). Hardware GS only (paraLLEl-GS takes the PNGs).
+    // A texture pack is drawn from a compressed copy (gs_texture_pack_cache.h: ASTC on Apple and
+    // Android, BC7 elsewhere): no PNG decoding during play, a quarter of the memory. Its images
+    // without a current copy are converted here, before the game starts, with "Getting <pack>
+    // ready" and a progress bar (once per pack; again only for images that changed). Hardware GS
+    // only (paraLLEl-GS takes the PNGs), and only when the GPU samples the format (else no step).
     void prepareTexturePack(PS2Runtime &runtime)
     {
         const std::string pack = rt::settings::texturePackDir();

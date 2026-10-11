@@ -149,8 +149,8 @@ Everything is in the in-game menu (**Options**). A few highlights:
 2. Edit or upscale them (any size), keeping the file names.
 3. Put them in a folder under `textures/packs/` and pick it under **Options → Texture pack**.
 
-On Android a pack is converted once to a compressed format (ASTC) the first time it's used, so it
-loads smoothly while you play.
+A pack is converted once to a compressed format the first time it's used (ASTC on Android and Mac,
+BC7 on Windows), so it loads smoothly while you play and takes a quarter of the memory.
 
 Where the folders are:
 - **macOS:** `~/Library/Application Support/RoadTripRecomp/textures/`

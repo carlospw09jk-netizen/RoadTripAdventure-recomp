@@ -135,6 +135,7 @@ Environment variables:
 | `RT_PROGRESSIVE_FIELDS=0\|1` | Overrides Options → Interlacing: 0 keeps the game's original alternating fields |
 | `RT_TEXTURE_DUMP=<dir>` | Overrides `[textures] dump` in settings.toml: saves every texture the game decodes once, as `<hash>_<W>x<H>_psm<NN>.png` |
 | `RT_TEXTURE_PACK=<dir>` | Overrides Options → Texture pack: a folder of replacement PNGs named by those hashes (any size) |
+| `RT_TEXTURE_CACHE_FORMAT=astc\|bc7\|none` | Hardware GS: the format texture packs are cached in (`<data>/textures/cache/<pack>/<hash>.astc\|.bc7`; default ASTC on Mac and Android, BC7 on Windows and Linux; none loads the PNGs). Used only if the GPU samples it |
 | `RT_ANISOTROPY=1\|2\|4\|8\|16` | Overrides `[textures] pack_anisotropy` (default 16): anisotropic filtering of texture-pack images (1 = trilinear) |
 | `RT_GS_PROGRESSIVE=0` | Uses paraLLEl-GS's field deinterlacer instead of the progressive high-resolution scanout |
 | `RT_GIF_THREAD=0` / `RT_GS_THREAD=0` | Runs GIF/VIF1/VU1 work, or the GS, on the game thread instead of their own threads (A/B checks) |

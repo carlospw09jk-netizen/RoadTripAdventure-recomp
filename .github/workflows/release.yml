@@ -245,7 +245,7 @@ jobs:
         run: |
           export PATH="$LLVM_MINGW_ROOT/bin:$PATH"
           # The preset builds only the app bundle and iso_reader_test; the other tests are built here.
-          cmake --build build/windows-release --target input_test drive_feel_test settings_test paths_test wide_layout_test
+          cmake --build build/windows-release --target input_test drive_feel_test map_router_test settings_test paths_test wide_layout_test
           ctest --preset windows-release
       - name: No game code in the app
         run: |

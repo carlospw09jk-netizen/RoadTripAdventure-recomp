@@ -18,6 +18,7 @@ namespace rt::textures::packprep
         bool running = false;
         bool finished = false; // it ran to the end (this pack, this session)
         uint32_t done = 0, total = 0;
+        uint32_t failed = 0; // of `done`, images that couldn't be converted (they load from PNG)
         double secondsLeft = -1.0; // from the speed so far (-1: not known yet)
     };
     Status status();

@@ -959,6 +959,10 @@ int main(int argc, char *argv[])
         std::cout << "[paths] portable: data in " << rt::paths::dataRoot().string() << "\n";
     }
 
+    // Texture pack caches go beside the packs; where that folder can't be written (copied in by
+    // another user), in the app's own data instead.
+    ps2x::gs::packcache::setPrivateCacheRoot((rt::paths::dataRoot() / "cache" / "packs").string());
+
     try
     {
         if (!ensureSetUp(opts))

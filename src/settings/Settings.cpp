@@ -17,6 +17,7 @@ namespace rt::settings
         constexpr std::array<const char *, 3> kWindowModes = {"windowed", "borderless", "fullscreen"};
         constexpr std::array<const char *, 5> kAspects = {"4:3", "16:10", "16:9", "21:9", "32:9"};
         constexpr std::array<const char *, 2> kHud = {"4:3", "edges"};
+        constexpr std::array<const char *, 2> kMap = {"game", "enhanced"};
         constexpr std::array<const char *, 3> kFrameModes = {"interpolate", "extrapolate", "rerender"};
         constexpr std::array<const char *, 2> kRenderers = {"hardware", "accurate"};
         constexpr std::array<const char *, 4> kAa = {"none", "fxaa", "smaa", "taa"};
@@ -110,6 +111,7 @@ namespace rt::settings
         s.windowHeight = std::max(224, integer(d, "height", s.windowHeight));
         s.aspect = pick(d, "aspect", kAspects, s.aspect);
         s.hud = pick(d, "hud", kHud, s.hud);
+        s.map = pick(d, "map", kMap, s.map);
         s.renderer = pick(d, "renderer", kRenderers, s.renderer);
         s.refreshRate = nearestOf(integer(d, "refresh_rate", s.refreshRate), {60, 120, 240});
         s.frameMode = pick(d, "frame_mode", kFrameModes, s.frameMode);
@@ -157,6 +159,8 @@ namespace rt::settings
           << "width = " << s.windowWidth << "\nheight = " << s.windowHeight << "\n"
           << "aspect = \"" << name(s.aspect) << "\"  # 4:3, 16:10, 16:9, 21:9, 32:9\n"
           << "hud = \"" << name(s.hud) << "\"  # 4:3 (centred) or edges (anchored to the window edges); the HUD is never stretched\n"
+          << "map = \"" << kMap[static_cast<size_t>(s.map)]
+          << "\"  # enhanced (the default: ours in the game's place, sharp, with places to visit; hardware renderer) or game (the game's own minimap)\n"
           << "renderer = \"" << kRenderers[static_cast<size_t>(s.renderer)]
           << "\"  # hardware (the GPU's rasteriser, lighter) or accurate (paraLLEl-GS); at the next start\n"
           << "refresh_rate = " << s.refreshRate << "  # 60, 120, 240 (frames between the game's 60 are generated)\n"

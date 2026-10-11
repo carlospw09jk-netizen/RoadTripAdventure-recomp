@@ -84,6 +84,19 @@ namespace rt::game
                (at<uint32_t>(ram, kScene3DHandler) == kRaceHandler || at<uint32_t>(ram, kScene3DHandler) == kTownHandler);
     }
 
+    bool attractDemo(const uint8_t *ram) { return ram && ram[kGameMode] == 8; }
+
+    std::string stateWords(const uint8_t *ram)
+    {
+        if (!ram)
+            return {};
+        char line[160];
+        std::snprintf(line, sizeof(line), "scene3d %u handler %x ui %x drive %x mode %u tile %x loc %u", at<uint32_t>(ram, kScene3D),
+                      at<uint32_t>(ram, kScene3DHandler), at<uint32_t>(ram, kUiContext), at<uint32_t>(ram, kDriveFlags), ram[kGameMode],
+                      at<uint32_t>(ram, kTile) & 0xFFFFu, ram[kLocationNow]);
+        return line;
+    }
+
     Stats readStats(PS2Runtime &runtime)
     {
         Stats s;
@@ -119,7 +132,11 @@ namespace rt::game
         s.demo = ram[kGameMode] == 8;
         s.canDrive = !s.demo && (at<uint32_t>(ram, kDriveFlags) & 0x04u) != 0;
         const bool scene3d = at<uint32_t>(ram, kScene3D) == 2 && !s.demo && at<uint32_t>(ram, kUiContext) != kTitleContext;
-        s.inTown = scene3d && at<uint32_t>(ram, kScene3DHandler) == kTownHandler && s.adventure;
+        // Towns run their 3D scene as 2, the field areas between them as 1 (same town handler;
+        // Q's Factory's menu is 1 with no handler).
+        const uint32_t scene3dKind = at<uint32_t>(ram, kScene3D);
+        s.inTown = (scene3dKind == 1 || scene3dKind == 2) && !s.demo && at<uint32_t>(ram, kUiContext) != kTitleContext &&
+                   at<uint32_t>(ram, kScene3DHandler) == kTownHandler && s.adventure;
         if (s.inTown)
         {
             // Where we are: the location whose map tile the car is in (0x335923 only changes at a

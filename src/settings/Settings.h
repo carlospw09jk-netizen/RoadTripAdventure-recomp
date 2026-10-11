@@ -14,6 +14,9 @@ namespace rt::settings
     // With a wide aspect only the 3D world widens: the game's 2D screens stay 4:3 and its HUD is
     // either kept in the centred 4:3 area or moved out to the window edges, never stretched.
     enum class HudMode { FourThree, Edges };
+    // The map on the main screen: the game's own, or ours in its place (sharp, with the places
+    // still to visit marked; the hardware GS draws the game's map apart for it, MapRouter).
+    enum class MapMode { Game, Enhanced };
     enum class FrameMode { Interpolate, Extrapolate, Rerender };
     // The GS renderer, chosen at startup: Hardware (the GPU's own rasteriser, lighter: the default)
     // or Accurate (paraLLEl-GS, the PS2's GS emulated in compute shaders). RT_GS_BACKEND wins.
@@ -37,6 +40,7 @@ namespace rt::settings
         int windowWidth = 1280, windowHeight = 896;
         Aspect aspect = Aspect::R4_3;
         HudMode hud = HudMode::FourThree;
+        MapMode map = MapMode::Enhanced; // (unknown values too; only the hardware GS can, MapRouter)
         Renderer renderer = Renderer::Hardware; // takes effect at the next start
         int refreshRate = 60;          // 60, 120, 240: 1, 2 or 4 frames per game frame (generated)
         FrameMode frameMode = FrameMode::Rerender; // re-rendered frames: no added latency

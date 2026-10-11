@@ -59,6 +59,11 @@ namespace rt::game
     // its handler the race's or the town's; the attract demo's race counts). Cheap: for per-frame use
     // from the camera hook, which gives logos and menus less temporal jitter than the game itself.
     bool inGameplay3D(const uint8_t *ram);
+    // The attract demo runs (game mode 8). Cheap: per host frame (the map router).
+    bool attractDemo(const uint8_t *ram);
+    // The raw words behind Stats' flags, for debug lines (RT_SECOND_DEBUG, the map socket command):
+    // "scene3d 2 handler 21cf80 ui 29afa0 drive 4 mode 0 tile 22".
+    std::string stateWords(const uint8_t *ram);
 
     // The town radio (Pause > Radio): what's on now. Read from the sound driver (SNDMOD) in IOP
     // RAM; songs are named from our own tracklist (titles and artists only, [music] in

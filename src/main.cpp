@@ -45,7 +45,10 @@
 #include "ps2_debug_panel.h"
 #include "rlImGui.h"
 #include "ui/ButtonGlyphs.h"
+#include "ui/MapRouter.h"
+#include "ui/MapView.h"
 #include "ui/SecondScreen.h"
+#include "game/GameStats.h"
 #include "game/Driving.h"
 #include "game/GameOptions.h"
 #include "ui/PauseMenu.h"
@@ -1023,14 +1026,17 @@ int main(int argc, char *argv[])
                 case rt::game::OptionsRequest::Top: rt::ui::openOptions(); break;        // Pause > Settings
                 case rt::game::OptionsRequest::None: break;
                 }
+                rt::ui::maprouter::update(rt); // where the game's map goes (second screen, our map, or the game's)
                 rt::ui::updatePauseMenu(); // Guide, Back+Start, Esc or F3: the in-game menu (pauses the game)
                 rt::ui::updateButtonGlyphs(); // the game's button glyphs for the pad in use
                 if (rt::host::keyPressed(SDL_SCANCODE_F1))
                     panel.toggleVisible();
                 const auto overlay = rt::settings::current().perfOverlay;
-                if (panel.isVisible() || rt::ui::pauseMenuWantsFrame() || overlay != rt::settings::PerfOverlay::Off)
+                if (panel.isVisible() || rt::ui::pauseMenuWantsFrame() || overlay != rt::settings::PerfOverlay::Off ||
+                    rt::ui::mapview::mainOverlayWanted(rt))
                 {
                     rt.presenter()->uiBegin();
+                    rt::ui::mapview::drawMainOverlay(rt); // Map = Enhanced: ours in the game's spot (under the windows)
                     panel.drawWindow(rt);
                     if (!ps2_test::paused()) // under the menu it would only read 0 fps
                         rt::ui::drawPerfOverlay(overlay);
@@ -1087,6 +1093,39 @@ int main(int argc, char *argv[])
                        ",\"driving\":" + (gs.wideDriving() ? "true" : "false") +
                        ",\"k\":" + std::to_string(gs.wideHorizontalScale()) + "}";
             }
+#if defined(PS2X_ENABLE_DEBUG_UI)
+            if (cmd == "map")
+            {
+                // {"cmd":"map"[,"enhanced":0|1][,"shot":PNG]}: where the game's map goes (MapRouter.h)
+                // and what the GS has of it; "enhanced" switches Map = Enhanced (not saved); "shot"
+                // saves the next presented frame with the UI (the main screen as shown).
+                PS2Runtime *rt = rt::host::runtime();
+                if (!rt || !rt->presenter())
+                    return "{\"ok\":false}";
+                if (line.find("\"enhanced\"") != std::string::npos)
+                    rt::settings::current().map =
+                        ps2_test::jsonField(line, "enhanced") == "1" ? rt::settings::MapMode::Enhanced : rt::settings::MapMode::Game;
+                if (line.find("\"shot\"") != std::string::npos)
+                    rt->presenter()->captureWindow(ps2_test::jsonField(line, "shot"));
+                ps2x::HostPresenter::MapInfo info;
+                rt->presenter()->mapInfo(info);
+                float rect[4] = {};
+                rt->presenter()->pictureRect(rect);
+                char buf[768];
+                std::snprintf(buf, sizeof(buf),
+                              "{\"ok\":true,\"dest\":\"%s\",\"up\":%s,\"shown\":%s,\"serial\":%llu,\"seen\":%llu,\"kind\":%u,"
+                              "\"latched\":%s,\"overlay\":%s,\"picture\":[%.4f,%.4f,%.4f,%.4f],\"uv\":[%.4f,%.4f,%.4f,%.4f],"
+                              "\"rect\":[%.4f,%.4f,%.4f,%.4f],"
+                              "\"state\":\"%s\"}",
+                              rt::ui::maprouter::name(rt::ui::maprouter::destination()), rt::ui::maprouter::mapUp() ? "true" : "false",
+                              info.shown ? "true" : "false", static_cast<unsigned long long>(info.serial),
+                              static_cast<unsigned long long>(info.framesSeen), info.kind, info.latched ? "true" : "false",
+                              rt::ui::mapview::mainOverlayWanted(*rt) ? "true" : "false", info.picture[0], info.picture[1], info.picture[2],
+                              info.picture[3], info.uv[0], info.uv[1], info.uv[2], info.uv[3], rect[0], rect[1], rect[2], rect[3],
+                              rt::game::stateWords(rt->memory().getRDRAM()).c_str());
+                return buf;
+            }
+#endif
             if (cmd == "radio") // {"cmd":"radio"[,"station":0|1|2]}: the town radio (GameOptions.h)
             {
                 PS2Runtime *rt = rt::host::runtime();

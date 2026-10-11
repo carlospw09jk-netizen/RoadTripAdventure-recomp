@@ -55,6 +55,11 @@ namespace
         const Settings c = load(path);
         CHECK(c.refreshRate == 120 && c.aspect == Aspect::R4_3 && c.superSampling == 4);
         CHECK(c.hud == HudMode::FourThree); // there is no stretched HUD
+        CHECK(defaults.map == MapMode::Enhanced); // ours unless asked for the game's
+        std::ofstream(path) << "[display]\nmap = \"game\"\n";
+        CHECK(load(path).map == MapMode::Game);
+        std::ofstream(path) << "[display]\nmap = \"blurry\"\n";
+        CHECK(load(path).map == MapMode::Enhanced); // unknown: the default
         // The display mode: every kind round-trips, an unknown name is the window.
         for (WindowMode m : {WindowMode::Windowed, WindowMode::Borderless, WindowMode::Fullscreen})
         {

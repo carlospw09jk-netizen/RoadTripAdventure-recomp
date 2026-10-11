@@ -10,4 +10,7 @@ namespace rt::ui
 {
     // Every host frame, inside the presenter's UI callback (outside the main ImGui frame).
     void updateSecondScreen(PS2Runtime &runtime);
+    // The player chose another page (Notebook, Radio) over the map: the map goes back to the main
+    // screen (MapRouter) until the game's context changes.
+    bool secondScreenHandsMapAway();
 }

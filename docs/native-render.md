@@ -277,3 +277,66 @@ MSCAL callback, `gs_frontend.cpp` `processNativeMarker`):
   reference with its output in VU memory (STQ.w of entry 2 excluded: it carries the previous
   vertex's fog). `tests/regression/test_native_draw.py` (hardware GS): the reference matches on every
   strip of a Quick Race and a town drive, and the native frames match the old path's.
+
+### Native draws with motion vectors, the UI mask, frame generation, widescreen and the map (re/native-gen)
+
+The backend used to decline native draws (the frontend then built the packet) for the map, the UI
+mask, motion vectors, frame generation and any frame the widescreen classifier had to see. None of
+them is declined now: the log's `declined_<reason>` counters (`classifier`, `backend`, `skipped`,
+`other`, `map`, `ui_mask`, `motion`, `frame_gen`) read 0 in a Quick Race and Peach Town with each
+asked for. `RT_NATIVE_DECLINE=<csv of classifier,ui_mask,map,motion,frame_gen>` puts a decline back
+(A/B: the draw is built as a packet and counted under that name). Headless test hooks:
+`RT_HWGS_MOTION=1`, `RT_HWGS_UI=1`, `RT_HWGS_SHADOWS=<n>`.
+
+- **Who knows what.** The classifier (WideLayout) and the motion tracker live on the GS thread's side
+  of the marker. `GS::processNativeMarker` takes the verdict from the draw's own data: where the
+  frame's kind is known and its HUD hasn't begun (`plainPath1`) the class is the default (scene in a
+  driving frame, UI on a 2D screen) and nothing is built; where the classifier has something to
+  learn (the frame's first draw, the HUD phase) the packet the strip would make is built once on the
+  CPU (`nativeReference`) and passed through the same `classifyWideUnlocked` as a GIF packet (moved out
+  of `processGIFPacket`). A native strip is one unit for it, so its HUD placement is one affine map of
+  screen X (`WideLayout::lastPacketPlacement`: scale k, bias 0 / 320(1-k) / 640(1-k) for the left,
+  centre and right anchor), carried on the draw (`NativeDraw::vertexClass`, `xScale`, `xBias`) and
+  applied in `native.vert` with the same 1/16 rounding. Only HUD draws (the minimap in towns, the
+  course map and the markers in races) take this CPU path; the 3D never does.
+- **UI mask and map layer.** `SubmitNative` builds the draw's triangles on the CPU
+  (`nativeScreenTriangles`, ADC-skipped triangles left out, placement applied) for UI-class and map
+  draws only, stages them for the UI mask (`stageUi`) and leaves them in the vertex list beside the
+  draw (`Batch::hostCount`), so `noteMapBox` finds the map's box as before. The draw itself goes to
+  the map layer in `record()` like any map batch (`Batch::map` from `isMap`).
+- **Motion vectors.** MotionTracker's `onMscal` runs on the VIF1 worker before the native hook, so the
+  marker before the native marker names the object's matrices (`m_motionId`). The frontend puts this
+  frame's and last frame's world->GS-window matrices on scene-class draws (`curC`, `prevC`, 16 floats
+  each: MotionTracker's C and C_prev) and `native.vert` outputs `vMotion = cur - prev` in GS pixels from
+  the vertex's object-space position: what `MotionTracker::vertexMotion` gives, without the 12.4
+  rounding, and with its guard (nothing far outside the screen or where a projection degenerates).
+  UI-class draws carry none (their vertices stay in shadow frames, as the classifier's UI class
+  always did). Entry 5's weighted axis is not part of the object matrices: it is added to the
+  position as drawn, not to the motion.
+- **Frame generation.** A shadow frame redraws the same native draws (`keepForShadows` keeps the
+  batches) with `NativeExtra.flags.y` = t = (i+1)/(shadows+1): each corner's homogeneous position is
+  `h + t (C x p - C_prev x p)`, i.e. the object's matrix moved on by t of its last frame's change
+  (what `MotionTracker::packetReproject` does for the paraLLEl-GS shadows; the hardware GS's
+  `moveVertices` extrapolated in screen space). Z and texture coordinates stay (coplanar decals keep
+  equal depths). Two guards kept from the older path: a triangle with a vertex moving over 200 GS
+  pixels (a mismatched object, a camera cut) stays, and so does one whose w changes sign. No 200 px
+  rule is needed for correctness otherwise: the matrices are the objects' own.
+- **Verified (Mac, hardware GS, `tests/regression/test_native_draw.py`).** `test_native_takes_part`
+  (Quick Race and town x motion, UI mask, frame generation), `test_native_widescreen_hud` (16:9, HUD at
+  the edges), `test_native_map_layer` (Peach Town, Enhanced map: same box, same map): no declines, and
+  the pictures match the declining path's. Present dumps of a Quick Race state at 120 Hz (virtual time,
+  `RT_SPEED=0.25`, same state, `RT_PRESENT_DUMP`): generated frames native vs the old shadow path on
+  the same native real frames: mean absolute difference 0.146 (real frames 0.062), and the pixels where
+  a generated frame differs from both real neighbours although those agree (the "flash" measure of #23)
+  are 0.72% of the picture on average, 2.4% at worst (the packet shadows: 0.78%, 3.2%): the same
+  places in both, where the real frames themselves jump. In a first real-time run, with the native
+  car shadow (entry 5, a weighted axis added to the position) first moved without that axis, the
+  shadow vanished in generated frames: the displacement is now added to the position as drawn. Motion view (`RT_SHOW_MOTION=1`) native vs the packet path: mean 0.047, 0.1% of
+  pixels over 24 levels (object edges). UI mask view (`RT_SHOW_UI=1`) with 16:9 edges: identical to the
+  packet path's (mean 0.0005 once the two windows are aligned).
+- **What remains declined or differs.** Programs 3, 4 and 6 (billboards, terrain, sky) are not native
+  yet (worker A), so a shadow frame mixes native and packet draws (both move by the same matrices'
+  change, to within the rounding of the old one). A flat 2D-looking native draw (the minimap) is not
+  snapped to whole GS pixels above 1x as the packet path's flat triangles are. `hw_spirv.h` is
+  regenerated by `hw/compile.py`: after merging with other shader changes run it again rather than
+  merging the generated header.

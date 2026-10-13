@@ -232,7 +232,8 @@ mapping (which components each weight scales) is open until the entry4 reference
   are small models with per-car matrices.
 - Sky: static ELF chains through entry6; the dome's matrix is centred on the camera (entry7).
 - 2D (menus, HUD) does not go through these helpers' model calls: it is PATH2/PATH3 packets
-  (`vifDirect`, GS upload chains). What reaches entry2 outside the 3D scene is menu scenes with 3D
+  (`vifDirect`, GS upload chains). How it is built, the GS state it sets and the proposed
+  native draw kinds: `docs/native-2d.md`. What reaches entry2 outside the 3D scene is menu scenes with 3D
   models (garage, car select).
 
 ## Open questions

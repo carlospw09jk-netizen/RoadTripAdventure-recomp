@@ -427,3 +427,33 @@ Android**: ~12k draw calls a frame (one per strip, each with its own 9 KB consta
 Adreno (a smaller constant block changed nothing). To do: batch strips into few draws (one storage buffer of
 draw records per frame, draw index per vertex), re-measure on the Thor (fps, per-thread GHz-eq, GPU busy,
 overload pause), then present dumps of generated frames for flashing (#23 method), then default on.
+
+  strip of a Quick Race and a town drive, and the native frames match the old path's.
+
+### Model cache, batching and attribution (branch `re/native-cache`)
+
+- **Vertex blocks are shared** (`NativeModel` in `gs_native_draw.h`): the block a model chain unpacks to
+  TOP + 1 is taken with its W lanes dropped (V3 UNPACKs leave W as the last data had it, which would make
+  every draw of one model differ), hashed (4-lane 64-bit mix) and looked up in a content-addressed cache
+  (256 MB, least recently drawn go first; a hit is compared byte for byte). The ribbon and anything else
+  that changes every frame gets a new block each time and is never drawn twice, so it stays streamed.
+  `RT_NATIVE_MODEL_CACHE=0` takes plain copies (verify mode does too).
+- **GPU side** (`gs_hw_backend.cpp`): a model drawn twice gets a storage buffer of its own (at most 256 a
+  frame, 256 MB, dropped after ~10 s unused); `native_cached.vert` (`-DCACHED`) reads it, `native.vert`
+  reads the block streamed after the draw's constants in the uniform buffer (sized to the block, not the
+  9.7 KB maximum). `RT_NATIVE_MODEL_GPU=0` streams everything.
+- **Batching:** native draws that follow each other with the same state join one `Batch` (`moreNative`):
+  the state set-up, texture and target lookups happen once, each draw is its own bind + draw call.
+- **Attribution** (`RT_NATIVE_DRAW_LOG=1`): the VIF1 worker keeps, per DMA chain, the guest source address of
+  each payload (`PS2Memory::vif1UnpackSource`), so each draw knows where its vertex block came from. The
+  5 s log lists the top 20 chains: region, the `vifCallModel` call (0x227048, hooked in `overrides.cpp`
+  while logging) whose chain starts at or before it and its return address (the renderer), gpu / cpu-reference /
+  fallback counts by reason, and how many distinct blocks the chain produced (more than one = not static).
+  `python3 scripts/native_attrib.py <app.log>` names the renderers from `config/game_symbols.toml`.
+- **Who passes which chain to vifCallModel** (from the decompiled callers): field tiles, extra tile layer
+  and the scene functions pass cell chains from the tables at 0x177AB20..0x177AB80; cars and wheels pass
+  `carModels` / 0x177EAC8.. models + 0x10; ELF chains by constant: car shadow 0x290570
+  (`drawCarsField`, `drawCarsAction`, 0x223588), 0x290670 (0x2238A0), 0x290770 (0x223B30), minimap
+  markers 0x290870 / 0x290940 (0x242D20..0x243398), sky 0x290A40 / 0x2962E0 / 0x298A50, arc ribbon
+  0x299430 (`drawArcRibbon`, the only static writer into a chain: nothing else stores into 0x290000..0x29A000
+  chain data). Props pass 0x177F5xx model pointers (0x25BE98..0x25D5F8), coins 0x335718.

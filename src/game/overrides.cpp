@@ -13,6 +13,7 @@
 #include "ps2x/state_archive.h"
 #include "runtime/ps2_save_state.h"
 
+#include "runtime/gs/gs_native_draw.h"
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -147,6 +148,18 @@ namespace
     {
         g_buildCamera(rdram, ctx, runtime);
         finishIfDone(rdram, ctx);
+    }
+
+    // ---------------------------------------------------------------- model call attribution
+    // RT_NATIVE_DRAW_LOG=1: vifCallModel (0x227048, a0 = the model chain) notes the renderer that
+    // called it, so the log can name the renderer behind each chain (ps2x::gs::nativeNoteModelCall).
+    constexpr uint32_t kCallModel = 0x00227048u;
+    PS2Runtime::RecompiledFunction g_callModel = nullptr;
+
+    void callModelNoted(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ps2x::gs::nativeNoteModelCall(GPR_U32(ctx, 4), GPR_U32(ctx, 31));
+        g_callModel(rdram, ctx, runtime);
     }
 
     // ---------------------------------------------------------------- progressive fields
@@ -455,6 +468,9 @@ namespace
         }
         else
             std::cerr << "[roadtrip] camera builder 0x21F698 not found: widescreen 3D unavailable\n";
+
+        if (ps2x::gs::nativeLogOn() && (g_callModel = runtime.lookupFunction(kCallModel)))
+            runtime.replaceFunction(kCallModel, callModelNoted);
     }
 }
 

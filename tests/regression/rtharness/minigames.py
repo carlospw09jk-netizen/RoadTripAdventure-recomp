@@ -81,19 +81,21 @@ def ski_jump(game: "Game", timeout_seconds: int = 60) -> str:
     """One run of White Mountain's Ski Jumping, straight down the ramp at full throttle (the
     stock car flies about 100 m). Returns the result message ("Smooth landing. Congratulations!
     ..." when it lands well); the window is left open on "Would you like to try again?"."""
-    for _ in range(timeout_seconds):
+    # Poll every 5 vblanks: the result types out in about a second, and a first look after a whole
+    # second can land in the middle of it (the text read is from the cursor on).
+    for _ in range(timeout_seconds * 12):
         if dialogue_open(game) and scene(game) == SCENE_TOWN:
             break
-        game.step(60, ["cross"], 128)
+        game.step(5, ["cross"], 128)
     else:
         raise AssertionError("no ski jump result")
     game.release()
     seen = ""
-    for _ in range(20):  # read the result as it types out
+    for _ in range(240):  # read the result as it types out
         current = text(game)
         if current and current not in seen:
             seen += current
         if "again?" in current:
             break
-        game.run(30)
+        game.run(5)
     return seen

@@ -108,6 +108,8 @@ def symbols() -> list[tuple[int, str, str, str]]:
 
 
 def function_starts() -> list[int]:
+    if os.environ.get("RT_GHIDRA_NOSEED"):
+        return []  # an independent analysis (docs/recompiler-accuracy.md compares it with the recompiler's set)
     for base in (ROOT, main_checkout()):
         gen = base / "generated"
         if gen.is_dir():

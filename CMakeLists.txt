@@ -338,6 +338,27 @@ if(BUILD_TESTING AND NOT ANDROID)
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
     target_include_directories(wide_layout_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
     add_test(NAME wide_layout COMMAND wide_layout_test)
+
+    # The recompiler against the R5900 manuals: instructions translated by ps2_recomp's own
+    # translators, run in the EE's float mode, compared with reference models (tests/ee_semantics).
+    add_executable(ee_semantics_gen tests/ee_semantics/ee_semantics_gen.cpp)
+    target_link_libraries(ee_semantics_gen PRIVATE ps2_recomp_lib)
+    set(RT_EE_CASES "${CMAKE_CURRENT_BINARY_DIR}/ee_semantics_cases.inc")
+    add_custom_command(OUTPUT "${RT_EE_CASES}"
+        COMMAND ee_semantics_gen "${RT_EE_CASES}"
+        DEPENDS ee_semantics_gen
+        COMMENT "Translating the ee_semantics cases with ps2_recomp"
+        VERBATIM)
+    add_executable(ee_semantics_test tests/ee_semantics/ee_semantics_test.cpp "${RT_EE_CASES}")
+    set_source_files_properties("${RT_EE_CASES}" PROPERTIES HEADER_FILE_ONLY TRUE)
+    target_include_directories(ee_semantics_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include/runtime"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xIOP/include"
+        "${CMAKE_CURRENT_BINARY_DIR}" tests/ee_semantics)
+    target_link_libraries(ee_semantics_test PRIVATE rt_sse2neon)
+    set_target_properties(ee_semantics_test PROPERTIES CXX_STANDARD 20)
+    add_test(NAME ee_semantics COMMAND ee_semantics_test)
 endif()
 
 if(NOT ANDROID)

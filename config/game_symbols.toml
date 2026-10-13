@@ -72,6 +72,34 @@
 0x2729E0 = { name = "vu0CopyMatrix", note = "libvu0 (by shape)" }
 0x272A48 = { name = "vu0UnitMatrix", note = "libvu0 (by shape)" }
 
+# --- Textures, GS memory and 2D packets (docs/native-textures.md) ---
+0x2003B8 = { name = "gameMainLoop", note = "boot + per-frame loop: clears GS 0..0x1A40, loads the font, walks tasks, post-pass, sceGsSwapDBuffDc" }
+0x2000C8 = { name = "gsInitDisplay", note = "sceGsResetGraph(0,1,2,1) + two sceGsSetDefDBuffDc 640x224 CT32, Z24 (DAT_00333288 = 0)" }
+0x207D80 = { name = "gifChainEnd", note = "writes qwc and the END id (0x70) into the DMA tag of a packet at p" }
+0x20D120 = { name = "loadStep", note = "the scene load state machine: request word kind = (w >> 16) & 0xF, index = w & 0xFF; state at 0x3356C0; picks the loader and the TBP rebase" }
+0x20DC50 = { name = "loadRequestTask", note = "task: starts a load (busy 0x333370, request word 0x333374); sets drive flag 0x400000 (the loading blur) unless bit 0x100000" }
+0x20DDE0 = { name = "loadFontTextures", note = "reads SYS table entry 0 (FONT/FONTE.GSL) and sends its chain with TBP + 0x1A40" }
+0x20AEF0 = { name = "loadCarPartsSet", note = "SYS entries 1..4: EFFECT.GSL (absolute 16169..), CARS/PARTS (TBP + 0x1BC2), TIRE (+ 0x1C44), WHEEL (models only)" }
+0x20B348 = { name = "loadPoseSet", note = "SYS entry 9 (POSE.GSL) at TBP + 0x1D8E; model blob to 0x3FA780 (likely)" }
+0x20B5E8 = { name = "loadShopSet", note = "SHOP/Tnn (table 0x29B29C) and SYS entry 11; rebases 0x1F2E, 0x1CC6, 0x285E, 0x34BE (shop interiors: T8 640x384)" }
+0x20C188 = { name = "loadCourseTile", note = "COURSE/ACTION file (table 0x29BE50), like loadFieldTile; each misc model's chain rebased to TBP 0x2B26 + i * 0x44" }
+0x20AD18 = { name = "copyCarModel", note = "car slot a -> b: memmove of the model blob and a GS local-to-local copy (T8 128x128 + 16x16 CLUT) through the template 0x29AD90" }
+0x20E1F0 = { name = "cdReadEntry", note = "starts sceCdRead of a {mode, lsn, sectors} table entry to dest (async; 0x20E440 polls)" }
+0x20E250 = { name = "cdReadEntryPart", note = "as cdReadEntry for a byte range of the entry (offset, size)" }
+0x20E318 = { name = "cdReadEntryWait", note = "cdReadEntry that waits (sceGsSyncV loop) until the read is done" }
+0x20E440 = { name = "cdReadPoll", note = "polls the pending sceCdRead; 0 when done" }
+0x20DCD8 = { name = "debugScreenRead", note = "sceGsExecStoreImage of a whole frame buffer (debug 'Screen Save'; no live callers)" }
+0x20E500 = { name = "debugScreenSave", note = "writes the capture to a file (debug; no callers)" }
+0x208120 = { name = "postPassSprite", note = "DIRECT packet (0x29A930 + variant * 0x90): the frame buffer (measured: the one being drawn) as a CT24 1024x256 texture over itself, FIX 0x20 (0..639 x 0..223) or 0x40 (loading blur, 2,1..637,222)" }
+0x203810 = { name = "draw2dListBegin", note = "per-frame 2D packet accumulator: flushes the last one (DIRECT) and starts the next in one of two buffers at 0x3362E0 / 0x340350 (stride 0xA070) (count at 0x335684, cap 0xA00)" }
+0x203990 = { name = "draw2dPushTexa", note = "appends a TEXA write (ta0 = arg, aem 1, ta1 = ta0 / 2) to the 2D accumulator (CT16 fades)" }
+0x2038F8 = { name = "draw2dInitPackets", note = "the two 2D accumulators' headers: TEX0 TBP 0x1A40 T8 512x512 CBP 0x1BC0 (the font), CLAMP" }
+0x21D718 = { name = "gifSpritePacketInit", note = "A+D header of a 2D draw: TEST, ALPHA, TEX1, TEX0 (arg), CLAMP; a sprite region follows" }
+0x21DAE8 = { name = "gifSpritePacketCount", note = "sets the packet's GIF NLOOP to 5 * n (n sprites)" }
+0x2063C8 = { name = "gifSpriteRegion", note = "(buf, x, y, u, v, w, h): a sprite cutting region (u, v, w, h) from the TEX0 at screen (x, y); writes REGION_CLAMP (CLAMP 2/2) for the region" }
+0x23E140 = { name = "texAnimCopyA", note = "per-frame GS local-to-local copies (template 0x2A3490, 3 copies: scrolling T4 windows); first of 26 sites, see docs/native-textures.md" }
+0x262678 = { name = "texAnimCopyB", note = "same with the template 0x2D9F50 (3 copies: NLOOP 0xC)" }
+
 [data]
 0x3356EC = { name = "vifPacketPtr", note = "write pointer of the VIF1 packet being built" }
 0x3356F0 = { name = "vifPacketSaved", note = "main-buffer pointer saved while the second buffer is built" }
@@ -102,3 +130,24 @@
 0x29D640 = { name = "todLight2Night", note = "second light set, night" }
 0x177F738 = { name = "fogFarParam", note = "written by updateTimeOfDayLight (with 0x177F73C) from the clock" }
 0x177F750 = { name = "fogColourRGBA", note = "fog colour written by updateTimeOfDayLight from the clock" }
+
+# --- Textures and GS memory ---
+0x29AF58 = { name = "sysFileTable", note = "12-byte {0x333388, lsn, sectors}: 0 FONT, 1 EFFECT, 2 PARTS, 3 TIRE, 4 WHEEL, 5 NOTE, 6 TITLE, 7 SCOREA?, 8 SORA, 9 POSE, 10 SELECT, 11 WORLDMAP/S00, 12 S00.E3D, 13 SCORE?, 14 OPTION2, 15 COIN (by sector count; ambiguous ones listed first match)" }
+0x29B29C = { name = "shopFileTable", note = "SHOP/T00..T05 (3528..4158 sectors)" }
+0x29B084 = { name = "putiFileTable", note = "entry 0 = SYS/PUTI.BIN (0xC000-byte frame n at n * 0xC000: T8 256x184 + CLUT), then SCOREA* files" }
+0x29B438 = { name = "carFileTable", note = "car files by index (loadCarModel); loadCarModelAt uses 0x29B428 + n * 0xC" }
+0x29BB50 = { name = "fieldFileTable", note = "FLD tiles (loadFieldTile)" }
+0x29BE50 = { name = "courseFileTable", note = "COURSE/ACTION files (loadCourseTile)" }
+0x29AD90 = { name = "carCopyPacket", note = "GIF packet: DMA tag, A+D BITBLTBUF/TRXPOS/TRXREG/TRXDIR=2 (car slot copy)" }
+0x2A3490 = { name = "texAnimCopyPacket", note = "GIF packet template (NLOOP patched) with 8 x {BITBLTBUF, TRXPOS, TRXREG, TRXDIR = 2}; filled from texAnimTable" }
+0x2A2BF0 = { name = "texAnimTable", note = "69 x 0x20 bytes {sbp, dbp, tbw, psm, trx w, h, scroll multipliers / masks}: T4/T8 window copies from a taller strip" }
+0x2D9F50 = { name = "texAnimCopyPacket2", note = "second template (NLOOP 0xC), used by texAnimCopyB" }
+0x29A930 = { name = "postPassPackets", note = "4 DIRECT packets x 0x90: [0] FIX 0x20, [1] FIX 0x40 +2/+1 px (loading blur), then the 512x256 mode pair (DAT_00333288 != 0)" }
+0x333288 = { name = "videoMode", note = "0 = 640x224 buffers (used), nonzero = 512x256" }
+0x333370 = { name = "loadBusy", note = "1 while a load request is being served" }
+0x333374 = { name = "loadRequest", note = "request word: bits 16..19 kind, 0..7 index, 0x100000 = no blur" }
+0x3356C0 = { name = "loadState", note = "load state machine step (0x8000 = a CD read is pending); -1 = done" }
+0x335680 = { name = "draw2dList", note = "write pointer base of the 2D accumulator; count at 0x335684" }
+0x335908 = { name = "drawBufferIndex", note = "frame buffer being drawn this frame (0 / 1); 0x335909 = field parity from sceGsSyncV" }
+0x335C80 = { name = "gsDBuffA", note = "sceGsDBuffDc used normally (drive flag 0x400000 clear)" }
+0x335FB0 = { name = "gsDBuffB", note = "sceGsDBuffDc used for the loading-blur frame (drive flag 0x400000)" }

@@ -266,8 +266,43 @@ MSCAL callback, `gs_frontend.cpp` `processNativeMarker`):
 - **Fallback on the GS thread:** where the backend can't take it (map batches, the UI mask, motion
   vectors, frame generation, a frame the classifier must see) the frontend builds the packet the
   program would have made (`nativeReference`, bit-exact VU float arithmetic) and processes it as usual.
-- **Fallback on the worker:** programs 3, 4, 6 (clipped strips) and any odd tag run as before; counted
-  by reason in `RT_NATIVE_DRAW_LOG=1` lines (`[native] strips: ...`, every 5 s).
+- **Fallback on the worker:** an odd tag, a count that doesn't fit, a D-bit run (the clipper's debug
+  break) and a microcode other than Road Trip's run as before; counted by reason in
+  `RT_NATIVE_DRAW_LOG=1` lines (`[native] strips: ...`, every 5 s). Programs 2-6 are all native now.
+- **Clipped programs (3 object, 4 world, 6 sky; branch `re/native-clip`):**
+  - The draw carries the VF registers and VU words the program read (`vf`, `mem`, `top1`), and the
+    GPU gets per-draw constants (matrices; entries 3/4: the chosen fog set from VF10/VF11 by the tag's
+    spare bit 33, fog set B, VU26 offset, the colour-set weights VF9; entry 3: the object's origin in
+    clip space; entry 6: VU6 axis, tint, cycling weights).
+  - **Which triangles are not drawn** (ADC) is decided on the VIF1 worker, as a bit mask the shader
+    reads: `classifyStrip` works the six CLIP flags of every vertex out in double with a margin far
+    above the VU's rounding (1e-5 of the sum of the terms) and only trusts certain flags. A strip
+    with every vertex inside (the great majority: 98% of terrain strips, 99.4% of object strips in
+    the captures) costs one pass of that; a strip whose triangles are all either inside or rejected
+    whole (all three vertices beyond one of -y, +y, -x, +x, -z, or any beyond +z) gets its mask and
+    is otherwise drawn as it is. Anything else (a triangle to clip, a flag too close to call) and
+    **every sky strip** (back-face culling by strip parity is a sign test of a cross product) runs
+    `vu1hle::run` on a scratch VU (`nativeClippedReference`): the sibling's reference of the
+    microprogram, bit-exact against the interpreter on every capture. Its kicked packets give the
+    mask (ADC bits), the **polygons the clipper cut out of crossing triangles** (`NativeDraw::fans`,
+    Sutherland-Hodgman in the microprogram's own arithmetic) and the registers it leaves.
+  - The polygons are exact, so they are drawn as the packets the microprogram kicks, and **before the
+    strip** (the microprogram kicks each as it finds it, the strip at its end): `processNativeMarker`
+    sends `fans` through the ordinary GIF path, then the strip (native or as a packet).
+  - **Carried state:** the sky's back-face test uses the previous vertex's screen position and edge
+    from VF17/VF18, but the first two vertices of a run can't close a triangle, so nothing carries
+    into a drawn triangle; the parity is the vertex's index in the run. Side effects of a skipped run
+    on registers a later program reads (VF8 entry 3, VF12, VF17/VF18, and, when the reference ran,
+    VF27.w/VF28 too) are applied by `applyNativeSideEffects`; a plainly inside strip leaves VF27.w
+    and VF28 alone (they end up only in STQ.w, which the GS ignores).
+  - **Colour sets** (entries 3/4): VF9.xyz are the weights of sets A, B, C and are the first row of
+    the time-of-day light blend `updateTimeOfDayLight` (0x225988) makes at 0x177F620 + n*0x40
+    (`todLightDay/Dusk/Night` 0x29D500/540/580 and the second set 0x29D5C0/600/640, each scaled by
+    the clock's day/dusk/night weights written to `sceneParams` x/y/z and added), uploaded to VU 0x14
+    by `vifUploadLightMatrix` and loaded into VF9..VF12 by SetupClipped; so the shader needs no
+    time-of-day input of its own: it reads VF9 as the setup left it. (B.x, the alpha channel's source
+    and 1.0 in towns, 0..1 on courses, is vertex data; the table above is not what varies it.)
+    The exact table contents and which light set n each renderer picks are not decoded (open).
 - **native.vert** does per vertex what the programs do: matrices, perspective divide, XY snapped to
   12.4 by truncation, Z as the 24-bit integer, STQ, fog, the lighting (entry 2) or offsets (entry 5),
   colour and fog as the integers the packet carries, and drops a triangle when any of its three
@@ -276,4 +311,18 @@ MSCAL callback, `gs_frontend.cpp` `processNativeMarker`):
 - **Verification:** `RT_NATIVE_DRAW_VERIFY=1` runs the microprogram as before and compares the
   reference with its output in VU memory (STQ.w of entry 2 excluded: it carries the previous
   vertex's fog). `tests/regression/test_native_draw.py` (hardware GS): the reference matches on every
-  strip of a Quick Race and a town drive, and the native frames match the old path's.
+  strip of a Quick Race and a town drive, and the native frames match the old path's. For the clipped
+  programs the check also covers the CPU's verdict (ADC mask, polygons) against the reference made
+  again from the inputs, and the last clipped polygon against VU memory 30.. (the polygon buffer).
+  Scenes: Quick Races on courses 0, 2, 3 and 5 (carousel included), Peach Town, and a drive out of
+  town into a field area; 0 mismatching runs in ~149 M verified runs (24.3, 12.9, 15.7, 18.2, 22.4, 27.9 and 28.0 M per scene) (13 Oct 2026).
+- `vu1_replay <capture> --native` (the captures of `docs/vu1-microcode.md`, 13 Oct 2026): builds a
+  `NativeDraw` for each record of entries 2-6 and compares the strip packet, the polygons, the ADC
+  mask and the registers left with what the interpreter did: 0 mismatches in 48,467 runs
+  (entry 4 3,463 + 8,000 [87 needed the reference, 82 with polygons], entry 3 14,625 [184 with
+  polygons], entry 6 2,266 [all through the reference, 209 with polygons], entries 2 and 5).
+- **Cost of the CPU part** (Quick Race, per 5 s window): of ~0.6 M entry-4 runs a few % went through
+  the reference; the rest cost one `classifyStrip` pass. Fallback by reason: `unknown_entry`, which
+  was ~40% of strip runs in a race (entry 4 ~616k, entry 3 ~15k, entry 6 ~4k of ~1.6 M per window),
+  is gone; what remains is `ring_full` (the GS thread behind the worker) and the GS thread's own
+  declines (map batches), unchanged.

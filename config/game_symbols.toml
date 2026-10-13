@@ -92,3 +92,13 @@
 0x299430 = { name = "chainArcRibbon", note = "VIF chain in .vutext whose vertices drawArcRibbon rewrites per frame (entry4)" }
 0x29D150 = { name = "paintIntensity", note = "16 floats 0.1..0.8: car colour nibble -> intensity" }
 0x29D080 = { name = "tileQuadrantOrigins", note = "per quadrant: x, ?, z origin (qword) for vifSetBatchOffset" }
+0x177F620 = { name = "lightMatrixBlend", note = "4 x 4 qw (0x40 each): updateTimeOfDayLight's blend of todLightDay/Dusk/Night by sceneParams x/y/z; row 0 = VU1 0x14 = the colour-set weights of entries 3/4 (VF9), rows 1/2 = fog sets A/B (VF10/VF11)" }
+0x177F660 = { name = "lightMatrixBlend2", note = "second 4 qw blend (todLight2Day/Dusk/Night)" }
+0x29D500 = { name = "todLightDay", note = "4 qw per light set: the day entry (weight x of sceneParams)" }
+0x29D540 = { name = "todLightDusk", note = "the dusk entry (weight y)" }
+0x29D580 = { name = "todLightNight", note = "the night entry (weight z)" }
+0x29D5C0 = { name = "todLight2Day", note = "second light set, day" }
+0x29D600 = { name = "todLight2Dusk", note = "second light set, dusk" }
+0x29D640 = { name = "todLight2Night", note = "second light set, night" }
+0x177F738 = { name = "fogFarParam", note = "written by updateTimeOfDayLight (with 0x177F73C) from the clock" }
+0x177F750 = { name = "fogColourRGBA", note = "fog colour written by updateTimeOfDayLight from the clock" }

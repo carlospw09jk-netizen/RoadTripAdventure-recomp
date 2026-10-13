@@ -349,4 +349,7 @@ target_link_libraries(rt_texture_extract PRIVATE ps2_runtime rt_sse2neon)
 
 # The disc's VAG streams as WAV (tools/audio_extract.cpp). Reads the user's disc at run time.
 add_executable(rt_audio_extract tools/audio_extract.cpp)
+
+# The models' VIF chains as OBJ + JSON, for research (tools/model_dump.cpp, docs/native-render.md).
+add_executable(rt_model_dump tools/model_dump.cpp)
 endif()

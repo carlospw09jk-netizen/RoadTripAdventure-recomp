@@ -1,0 +1,94 @@
+# Road Trip (USA, SLUS-20398): our names for the game's routines and data.
+#
+# Addresses, names and one-line notes only: never game code. scripts/ghidra/decompile.py applies
+# them to the Ghidra project on every run (they win over roadtrip.toml and game_state.toml names).
+# Key = address; value = { name, note } (note optional). Rendering layer: docs/native-render.md.
+# Notes say "likely" or "guess" where not verified.
+
+[functions]
+# --- VIF1 packet helpers (docs/native-render.md, "Packet helpers") ---
+0x2263B8 = { name = "vifUploadCamera", note = "REF 15 qw from a camera block to VU1 4..0x12 (MSKPATH3 on)" }
+0x226480 = { name = "vifUploadSceneParams", note = "REF 3 qw to VU1 0x13 (time-of-day colour weights, fog)" }
+0x226540 = { name = "vifCameraSetup", note = "MSCALF entry0; BASE 0x8D, OFFSET 0x1AE (double-buffered input)" }
+0x226610 = { name = "vifSetBatchOffset", note = "1 qw to VU1 0x1A: tile origin added to model positions" }
+0x2266E8 = { name = "vifUploadAt4", note = "REF 8 qw to VU1 4 (no flush)" }
+0x2267A8 = { name = "vifUploadAt16", note = "REF 8 qw to VU1 0x10 (FLUSHE first)" }
+0x226868 = { name = "vifUploadLightMatrix", note = "4 qw to VU1 0x14" }
+0x226940 = { name = "vifUploadLightAt16", note = "4 qw to VU1 0x10" }
+0x226A18 = { name = "vifUploadColours", note = "2 qw to VU1 0x18 (car paint / map colours)" }
+0x226B18 = { name = "vifObjectMatrix", note = "object matrix (4 qw) to VU1 0, then MSCALF entry1" }
+0x226C28 = { name = "vifBatchRegs", note = "REGLIST GIF tag + 2 GS regs (e.g. TEX0_2) to TOPS+0x192" }
+0x226D58 = { name = "vifFixedRegs", note = "as vifBatchRegs, to VU1 0x21F (no TOPS)" }
+0x226E88 = { name = "vifUploadPacket", note = "REF n qw to TOPS+0x192 (a prebuilt GS packet)" }
+0x226F70 = { name = "vifDirect", note = "REF n qw sent by DIRECT (PATH2), FLUSH first" }
+0x227048 = { name = "vifCallModel", note = "DMA CALL into a model's prebuilt VIF chain" }
+0x227108 = { name = "vifBeginPacket", note = "0: main buffer 0x1750BF0; 1: second buffer 0x1730BF0" }
+0x227178 = { name = "vifEndPacket", note = "END tag (MSKPATH3 off); returns the chain start" }
+0x2271F0 = { name = "vifKick", note = "starts VIF1 DMA in chain mode at the given tag" }
+0x227270 = { name = "vifObjectMatrixSky", note = "object matrix to VU1 0, then MSCALF entry7" }
+
+# --- Scene drawing (per viewport; picked by renderInit from the location byte) ---
+0x221300 = { name = "renderInit", note = "picks the scene draw function and the viewport's camera block" }
+0x220938 = { name = "drawSceneField", note = "towns and field areas: 4 FLD tile quadrants, cars, props, coins, sky" }
+0x220B20 = { name = "drawSceneCloudHill", note = "location 0x22 (Cloud Hill)" }
+0x220D40 = { name = "drawSceneRace", note = "race courses (COURSE files, tile slot 2)" }
+0x220FE8 = { name = "drawSceneAction", note = "mini-game maps: locations 0x12 maze, 0x1C tunnel race, 0x20 curling" }
+0x21FB38 = { name = "drawFieldTiles", note = "8x8 cells of 200 units per tile quadrant, culled by drawCellVisible" }
+0x21FA38 = { name = "cellVisible", note = "frustum test of a 200-unit cell centre (likely)" }
+0x220030 = { name = "drawFieldTilesExtra", note = "each tile's 65th chain (water/far layer, likely)" }
+0x2228A8 = { name = "drawCarsField", note = "24 cars: shadow quads (ELF chain 0x290570), then drawCar with LOD" }
+0x222B70 = { name = "drawCarsAction", note = "drawCarsField for the mini-game maps" }
+0x221788 = { name = "drawCar", note = "one car: paint colours, body near/far LOD, parts, wheels" }
+0x222360 = { name = "drawCarExtraParts", note = "a car model's part A / part B chains (model header masks)" }
+0x2213E8 = { name = "drawCarWheelsMid", note = "guess: middle-distance wheels" }
+0x221570 = { name = "drawCarWheelsNear", note = "guess: near wheels with tyre detail" }
+0x221F70 = { name = "drawCarShowroom", note = "guess: a single car outside races (garage/shop)" }
+0x2232E8 = { name = "drawFieldProps", note = "32 placed objects from the tile's misc models (0x177F580)" }
+0x222F08 = { name = "drawRaceProps", note = "guess: race-course placed objects" }
+0x2234C8 = { name = "drawModelParts", note = "draws part A and/or B of a model (mask bit 0 / 1)" }
+0x2224F8 = { name = "drawArcRibbon", note = "rewrites vertices of the ELF chain 0x299430 every frame, then calls it" }
+0x225120 = { name = "drawCarEffects", note = "per-car effects by car flags (jets, wings, ...); guess" }
+0x225608 = { name = "drawSkyDome", note = "sky: ELF chain 0x290A40 (entry6), matrix through entry7" }
+0x2256A8 = { name = "drawSkyLayers", note = "sky layers: ELF chains 0x2962E0 / 0x298A50 (entry6)" }
+0x241D38 = { name = "drawCoins", note = "Choro Q coins (coin table 0x2A3970)" }
+0x25D028 = { name = "drawAnimatedProps", note = "dispatch over 0x2C43B0 to the prop renderers 0x25BE98..0x25D5F8" }
+0x2455C0 = { name = "drawCarouselScene", note = "likely: Quick Race course carousel (tile 1 cells)" }
+0x21F698 = { name = "buildCamera", note = "fills a 0x190-byte camera block (matrices at +0, +0x40, +0x80, +0xC0, +0x100)" }
+0x2261A0 = { name = "updateLightDirection", note = "light direction relative to the camera position (block + 0x180)" }
+0x225988 = { name = "updateTimeOfDayLight", note = "weights at 0x177F720 and fog from the clock (vblanks since midnight)" }
+0x226248 = { name = "setFixedLight", note = "time-of-day weights/fog from the table at 0x29EA10" }
+
+# --- Loading ---
+0x20BAC8 = { name = "loadFieldTile", note = "state machine: reads a FLD/COURSE/ACTION file into 0x707B80 + slot * 0x3A8000" }
+0x20C7B8 = { name = "loadCarModel", note = "reads a CAR file into a slot; 6 model pointers to 0x177F310 + slot * 0x18" }
+0x20C9D0 = { name = "loadCarModelAt", note = "car file into 0x3FBB80 + n * 0x34000; textures rebased to TBP 0x243E + n * 0x44" }
+0x207B50 = { name = "sendTexturePackets", note = "sends a file's GS upload chain (CNT tags up to END)" }
+
+# --- Misc ---
+0x2006F0 = { name = "fatal", note = "prints a message and stops (assert)" }
+0x272728 = { name = "vu0ApplyMatrix", note = "libvu0 (by shape)" }
+0x272758 = { name = "vu0MulMatrix", note = "libvu0 (by shape)" }
+0x2729D0 = { name = "vu0CopyVector", note = "libvu0 (by shape)" }
+0x2729E0 = { name = "vu0CopyMatrix", note = "libvu0 (by shape)" }
+0x272A48 = { name = "vu0UnitMatrix", note = "libvu0 (by shape)" }
+
+[data]
+0x3356EC = { name = "vifPacketPtr", note = "write pointer of the VIF1 packet being built" }
+0x3356F0 = { name = "vifPacketSaved", note = "main-buffer pointer saved while the second buffer is built" }
+0x3356F4 = { name = "vifPacketSecond", note = "1 while building in the second buffer" }
+0x29ED10 = { name = "gifRegListTemplate", note = "GIF tag: NLOOP 1, EOP, REGLIST, NREG 2 (regs patched per call)" }
+0x177E6D0 = { name = "cameraBlocks", note = "0x190 bytes per viewport" }
+0x177F720 = { name = "sceneParams", note = "3 qw for VU1 0x13: time-of-day weights (x, y, z), fog" }
+0x177F310 = { name = "carModels", note = "6 model pointers per car slot (0x18 bytes)" }
+0x177F580 = { name = "fieldMiscModels", note = "6 model pointers per tile slot (FLD misc section)" }
+0x177AB20 = { name = "fieldCellTables", note = "per tile slot: pointer to 65 cell chain pointers" }
+0x177AB70 = { name = "fieldMapModels", note = "per tile slot: the minimap model (part B is drawn)" }
+0x707B80 = { name = "fieldTileData", note = "tile slot n at + n * 0x3A8000" }
+0x3FBB80 = { name = "carModelData", note = "car slot n at + n * 0x34000" }
+0x290570 = { name = "chainCarShadow", note = "VIF chain in .vutext: a 4-vertex quad (entry5)" }
+0x290A40 = { name = "chainSkyDome", note = "VIF chain in .vutext (entry6)" }
+0x2962E0 = { name = "chainSkyLayerA", note = "VIF chain in .vutext (entry6)" }
+0x298A50 = { name = "chainSkyLayerB", note = "VIF chain in .vutext (entry6)" }
+0x299430 = { name = "chainArcRibbon", note = "VIF chain in .vutext whose vertices drawArcRibbon rewrites per frame (entry4)" }
+0x29D150 = { name = "paintIntensity", note = "16 floats 0.1..0.8: car colour nibble -> intensity" }
+0x29D080 = { name = "tileQuadrantOrigins", note = "per quadrant: x, ?, z origin (qword) for vifSetBatchOffset" }

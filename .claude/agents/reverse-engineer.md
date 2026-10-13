@@ -8,6 +8,15 @@ You reverse engineer a PS2 game for a native recompilation. You answer one quest
 You never edit repository files and never commit; scratch scripts and probe output go in the session's scratchpad.
 
 ## Sources
+- Start with the decompiler: `python3 scripts/ghidra/fn.py <addr|name>` prints a function's Ghidra
+  pseudocode, callers and callees; `fn.py --find REGEX` lists functions whose pseudocode matches.
+  The export is `build/decomp/` (`fn/<addr>.c`, `callgraph.json`); if it is missing or stale, run
+  `python3 scripts/ghidra/decompile.py` (first run imports and analyses, ~30 s; later runs only
+  re-apply names, ~15 s). Names come from `config/game_symbols.toml` (ours), `game_state.toml` and
+  `roadtrip.toml`; report new names there as `0xADDR = { name, note }` lines for the caller to add.
+  Pseudocode is a reading aid: confirm loads/stores that matter against the MIPS in `generated/`.
+- `docs/native-render.md`: the rendering layer (VIF helpers, camera block, scene drawing) and the
+  model file formats; `rt_model_dump` decodes a disc file's model chains to OBJ + JSON.
 - `generated/sub_XXXXXXXX_0x....cpp`: one file per recompiled function, each instruction's MIPS disassembly in a
   `// 0x...:` comment. Grep comments with single-quoted patterns (a bare `$` in double quotes is an anchor).
   `jal func_XXXXXX` lines give call edges; `lui`+`addiu`/`lw` pairs give addresses (gp = 0x33AAF0 for gp-relative).

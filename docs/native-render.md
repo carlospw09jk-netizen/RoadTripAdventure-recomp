@@ -1,0 +1,249 @@
+# The game's rendering layer (EE side) and model formats
+
+Notes for the native renderer (branch `re/native-render`). Our own descriptions of how Road Trip
+builds its 3D draw lists and how its models are stored; addresses are the USA release (SLUS-20398).
+Names are in `config/game_symbols.toml` and appear in the Ghidra export (`scripts/ghidra/fn.py`).
+Verified = read in the decompiled code or the disc data, or measured; *likely* and *guess* mark
+the rest. The VU1 microprograms themselves are documented separately (Phase 1 items 3-4).
+
+Tools:
+- `python3 scripts/ghidra/decompile.py`: Ghidra headless project and pseudocode export (`build/decomp/`).
+- `python3 scripts/ghidra/fn.py <addr|name>`: one function's pseudocode, callers and callees.
+- `build/.../rt_model_dump <disc file> <out dir>` (`tools/model_dump.cpp`): a file's model chains as
+  OBJ + JSON (chains, batches, materials); `--va 0x...` decodes chains inside the boot ELF.
+- `scripts/model_view.py <obj> <png> [--object NAME]`: renders a dump with matplotlib.
+
+Checked by eye (dumps rendered to PNG): a car body (CAR0/Q00, Choro Q sedan with dark windows),
+Peach Town's tile (FLD/223: terrain, roads, houses with gabled roofs), a course (COURSE/C00:
+an oval raceway with stands on rolling terrain). Game space is y up. Every .BIN on the disc decodes
+with these layouts: each batch's vertex block is NLOOP x the entry's vectors per vertex (plus the
+centre for billboards).
+
+## Microprogram entries
+
+The VU1 microcode starts with a jump table; MSCAL immediates map to the recompiler's `entryN` by
+`imm * 8 / 0x10` (byte address = imm * 8).
+
+| MSCAL imm | Entry | Called from | Role (EE side) |
+|---|---|---|---|
+| 0x0 | entry0 | `vifCameraSetup` 0x226540 | after a camera upload |
+| 0x2 | entry1 | `vifObjectMatrix` 0x226B18 | after an object matrix upload (VU 0..3) |
+| 0x4 | entry2 | model chains | lit models: cars, props, shop interiors, coins |
+| 0x6 | entry3 | model chains | billboards (trees, signs) in FLD/COURSE/ACTION |
+| 0x8 | entry4 | model chains | terrain cells (FLD/COURSE/ACTION), the arc ribbon |
+| 0xA | entry5 | model chains | unlit models: minimap, car shadows, some car parts, far props |
+| 0xC | entry6 | ELF chains | sky dome and sky layers |
+| 0xE | entry7 | `vifObjectMatrixSky` 0x227270 | the sky's object matrix |
+
+Batch counts on the disc (every .BIN scanned): entry4 ~640k, entry2 ~150k, entry5 ~13k,
+entry3 ~9k. entry3 is common (billboards) though it was never in a capture.
+
+## VU1 memory as the EE fills it
+
+| VU1 qword | Written by | Content |
+|---|---|---|
+| 0x00-0x03 | `vifObjectMatrix` / `vifObjectMatrixSky` | object (local to world) matrix, then MSCAL entry1 / entry7 |
+| 0x04-0x12 | `vifUploadCamera` (15 qw from the camera block) | camera matrices (below) |
+| 0x04-0x0B / 0x10-0x17 | `vifUploadAt4` / `vifUploadAt16` (8 qw) | alternative view blocks (map, menus) |
+| 0x10-0x13 | `vifUploadLightAt16` | light block (0x177F5E0: light position/direction) |
+| 0x13-0x15 | `vifUploadSceneParams` (0x177F720) | time-of-day weights x, y, z; fog parameters |
+| 0x14-0x17 | `vifUploadLightMatrix` | light/colour matrix (0x177F620 + n*0x40, time-of-day blended) |
+| 0x18-0x19 | `vifUploadColours` | 8 floats: car paint intensities (from `paintIntensity` 0x29D150 by colour nibble), map colours |
+| 0x1A | `vifSetBatchOffset` | tile origin added to model positions (terrain quadrants) |
+| 0x21F.. | `vifFixedRegs` | a 2-qword GS register packet at a fixed address |
+| BASE 0x8D, OFFSET 0x1AE | `vifCameraSetup` | double-buffered input: TOPS = 0x8D or 0x23B |
+| TOPS+0 | model chain | the batch's output GIF tag |
+| TOPS+1.. | model chain | the batch's vertices |
+| TOPS+0x192.. | model chain or `vifBatchRegs` / `vifUploadPacket` | a GS register packet (material) |
+
+## Packet helpers (0x2263B8-0x227270)
+
+All build into one VIF1 DMA chain at `vifPacketPtr` (0x3356EC): `vifBeginPacket(0|1)` picks
+0x1750BF0 or a second buffer 0x1730BF0 (the main pointer is kept in 0x3356F0 while the second is
+built), `vifEndPacket` writes an END tag (MSKPATH3 off) and returns the chain start, `vifKick`
+starts VIF1 DMA in chain mode (CHCR 0x145). Each helper checks the buffer limit (0x17523D0 /
+0x1750BD0) and calls `fatal` (0x2006F0) on overflow.
+
+| Helper | DMA tag | VIF codes |
+|---|---|---|
+| `vifUploadCamera(p)` | REF 15 → p | MSKPATH3 on; UNPACK V4-32 15 → 0x04 |
+| `vifUploadSceneParams(p)` | REF 3 → p | FLUSHE; UNPACK V4-32 3 → 0x13 |
+| `vifCameraSetup()` | CNT 1 | FLUSHE; MSCALF 0; then BASE 0x8D, OFFSET 0x1AE |
+| `vifSetBatchOffset(q)` | CNT 1 | FLUSHE; UNPACK V4-32 1 → 0x1A; the qword |
+| `vifUploadAt4(p)` / `vifUploadAt16(p)` | REF 8 → p | (FLUSHE); UNPACK V4-32 8 → 0x04 / 0x10 |
+| `vifUploadLightMatrix(m)` / `vifUploadLightAt16(m)` | CNT 4 | FLUSHE; UNPACK V4-32 4 → 0x14 / 0x10 |
+| `vifUploadColours(a, b)` | CNT 2 | FLUSHE; UNPACK V4-32 2 → 0x18 |
+| `vifObjectMatrix(m)` | CNT 5 | FLUSHE; UNPACK V4-32 4 → 0x00; matrix; FLUSHE; MSCALF 2 (entry1); BASE 0x8D; OFFSET 0x1AE |
+| `vifObjectMatrixSky(m)` | CNT 5 | the same with MSCALF 0xE (entry7) |
+| `vifBatchRegs(d0, r0, d1, r1)` | CNT 2 | STCYCL 1,1; UNPACK V4-32 2 → TOPS+0x192: a REGLIST GIF tag (template `gifRegListTemplate` 0x29ED10: NLOOP 1, EOP, NREG 2, REGS = r0, r1) and {d0, d1} |
+| `vifFixedRegs(...)` | CNT 2 | as above → 0x21F (no TOPS) |
+| `vifUploadPacket(p, n)` | REF n → p | STCYCL 1,1; UNPACK V4-32 n → TOPS+0x192 |
+| `vifDirect(p, n)` | REF n → p | FLUSH; DIRECT n (PATH2 GS packet: fog colour, scissor, alpha/test registers) |
+| `vifCallModel(chain)` | CALL → chain | none: the model's own chain does the rest |
+
+`vifBatchRegs` is how cars and props get their texture: register 7 = TEX0_2 (register 0xF =
+NOP for the second slot, or 7 again with CLD 0 and CSA = part index for parts sharing one CLUT).
+A car's TEX0: TBP0 = 0x243E + slot*0x44, TBW 2, PSMT8, 128x128, TCC 1, MODULATE, CBP = TBP0 + 0x40,
+CLD 1. Terrain, billboards and course objects carry their material inside their own chain.
+
+## Camera block (0x177E6D0 + idx * 0x190)
+
+`renderInit` (0x221300) gives the viewport task its block from its viewport field n (task + 0x1C):
+0x177E6D0 for n = 0 (one player) and n = 1, 0x177E860 for n = 2 (the second player's half).
+`buildCamera` (0x21F698) fills it:
+
+| Offset | Content |
+|---|---|
+| +0x000 | projection (x scale = focal * aspect factor) x view: world → screen-scaled clip |
+| +0x040 | projection (focal / 512) x view: world → normalised clip (likely the clipper's) |
+| +0x080 | viewport: x 512 * aspect factor, the GS offsets and depth scale (clip → GS coordinates) |
+| +0x0C0 | projection x view rotation only (no translation): for the sky |
+| +0x100 | view matrix (world → camera) |
+| +0x170 | camera position used to centre the sky |
+| +0x180 | camera position (light direction is computed from it) |
+| +0x18C | focal distance (cars' LOD divides view depth by it) |
+
+`vifUploadCamera` sends +0x000..+0x0EF (15 qwords) to VU1 0x04..0x12. The widescreen hook narrows
+the projections built here (CLAUDE.md, Widescreen).
+
+## Scene drawing
+
+`renderInit` sets the viewport task's draw function from the location byte (+0x22 of the scene):
+0xFF → `drawSceneField` (towns and field areas), 0x22 → `drawSceneCloudHill`, 0x12/0x1C/0x20 →
+`drawSceneAction` (maze, tunnel race, curling), else `drawSceneRace`. Per frame, per viewport,
+`drawSceneField` (0x220938) builds one chain in this order:
+
+1. `updateLightDirection`; picks which of the 4 tile quadrants are near the player.
+2. `vifBeginPacket(1)`; `drawSkyDome` (camera block, `vifObjectMatrixSky` with the camera
+   position, ELF chain 0x290A40) and `drawSkyLayers` (ELF chains 0x2962E0, 0x298A50, colours by
+   the time-of-day weights).
+3. Camera, scene parameters, entry0; the fog packet (`vifDirect` of a FOGCOL packet built at
+   0x172FF50, and 0x29CFC0).
+4. `drawFieldTiles` (0x21FB38): for each loaded quadrant, `vifSetBatchOffset` (origin from
+   0x29D080), then 64 cells of 200 x 200 units (an 8 x 8 grid of one 1600-unit tile), each culled by
+   `cellVisible` (0x21FA38) and drawn with `vifCallModel(cellTable[i])`.
+5. `drawCarsField` (0x2228A8): 24 cars (0x177ACE0, stride 0x270): shadow quads first (per car an
+   object matrix and the ELF chain 0x290570, entry5), then `drawCar` (0x221788) for cars whose
+   projected size passes a threshold, then `drawCarExtraParts`.
+6. `drawFieldProps` (32 placed objects, misc models 0x177F580), `drawCoins`, `drawAnimatedProps`
+   (dispatch table 0x2C43B0 to 0x25BE98..0x25D5F8).
+7. Camera again; `drawArcRibbon` (0x2224F8) and the 65th chain of each tile (`drawFieldTilesExtra`,
+   after everything opaque: water and other translucent layers, *likely*); `drawCarEffects`.
+8. `vifEndPacket`, `vifKick`.
+
+No depth sorting anywhere: draw order is fixed (opaque world, cars, props, then translucent layers)
+and the GS Z buffer does the rest. Culling is per terrain cell (frustum test of the cell centre)
+and per car (size on screen).
+
+### LOD
+
+- Cars (`drawCar`): body model 0 (near) or 1 (far) by view depth / focal against 0x332CC0, and at
+  most 6 near bodies per frame (counter 0x3356E8, reset by `drawCarsField`). Wheels (*likely*:
+  they get the car's wheel positions, car + 0x80): 3 levels (`drawCarWheelsNear` 0x221570 when the
+  distance factor is 0, `drawCarWheelsMid` 0x2213E8 below 0x332CCC, one far model otherwise).
+- Terrain, props: no LOD (cells are culled whole).
+
+### Car drawing (`drawCar`, 0x221788)
+
+Per car slot s: the slot's six models at `carModels` (0x177F310 + s*0x18), the car record's colour
+nibbles → `paintIntensity` → `vifUploadColours` (VU 0x18-0x19); light matrix by time of day
+(0x177F620 + n*0x40) through 0x226058; object matrix; `vifBatchRegs` with the slot's TEX0; body
+(near/far), body variant (flag 0x1000 picks model 2 or 3), optional extras (models 4, 5); parts
+(0x177EAC8.., wheels, wings, jets) each with its own matrix and CSA.
+
+## Model storage
+
+### Containers
+
+| Files | Load address | Layout |
+|---|---|---|
+| FLD/xyz.BIN (64 tiles, name = tile code in base 4), COURSE/Cnn, ACTION/Ann | 0x707B80 + slot * 0x3A8000 (`loadFieldTile` 0x20BAC8) | header: u32 header size (0x20), then section offsets s1..s5. Bytes header size..s1 are the textures' GS upload chain (CNT tags to END). Section 1: 65 relative pointers (64 cells, row-major 8 x 8, then one extra) followed by the cell chains. s2: collision ("PMP", version 0x600/0x608). s3: the minimap model. s4: misc model table (props). |
+| CAR0..CAR4/Qnn.BIN | 0x3FBB80 + slot * 0x34000 (`loadCarModelAt`) | 6 relative model pointers (body near, body far, variants, extras), u32 model data size, then the textures' upload chain (TBP rebased to 0x243E + slot * 0x44) |
+| CARS/PARTS, TIRE, WHEEL, Q150; SHOP/*; SYS/COIN | various | a table of model pointers, then models (same model format) |
+| boot ELF (.vutext) | in place | sky (0x290A40, 0x2962E0, 0x298A50), car shadow (0x290570), arc ribbon (0x299430) |
+
+Pointers are relative to the section (or file) start; the loaders add the load address once.
+
+### Model header (16 bytes)
+
+`{u32 partA_offset, u32 partB_offset, u32 partA_batches, u32 partB_batches}`, then the main chain at
++0x10. `vifCallModel(model + 0x10)` draws the main chain; `drawModelParts(model, mask)` (0x2234C8)
+draws part A (mask bit 0) and/or part B (bit 1) at `model + offset` when its count is non-zero.
+The minimap is part B of a tile's map model (FLD/223: 65 batches, entry5, untextured strips).
+
+### Chain layout (every model chain on the disc)
+
+One CNT tag holding the whole mesh, then RET (ELF chains are a single RET tag with data). VIF codes:
+
+```
+STCYCL 1,1
+[UNPACK V3-32 n → TOPS+0x192]        material: A+D GIF tag + (n-1) registers   (optional, sticky)
+repeat per batch:
+  UNPACK V4-32 1 → TOPS+0            output GIF tag (PACKED, PRE, NREG 3, REGS ST RGBAQ XYZF2)
+  UNPACK V3-32 m → TOPS+1            vertex block, m = NLOOP x vectors per vertex
+  MSCALF entry
+```
+
+Never seen in model chains: STROW, STCOL, STMASK, masked or 8/16-bit UNPACKs, ITOP, MSCNT.
+The vertex count comes from the output tag's NLOOP (no ITOP). V3 unpacks leave W alone.
+
+Material blocks: A+D TEX1_2 (0x15), TEX0_2 (7), CLAMP_2 (9), optionally MIPTBP1_2 (0x35). They
+stay in force for the following batches until the next block (GS state; how the microprogram kicks
+them across the double buffer is for the microcode notes). Cars and props have none in their
+chains: `vifBatchRegs` supplies TEX0_2 before the call.
+
+Output GIF tag (TOPS+0):
+
+| Bits | Meaning |
+|---|---|
+| NLOOP | vertices in the batch (one strip) |
+| PRIM | 0x264 / 0x26C / 0x274 / 0x27C seen: triangle strip, CTXT 2, ABE, FGE; IIP and TME vary |
+| bit 33 (spare) | 0 or 1 per batch: a flag for the microprogram (meaning open) |
+| word 3 (REGS high, unused by GIF with NREG 3) | entry3/4: the same tag's upper word with PRIM = triangle fan (0x313Ec000 for 0x27C): the clipper's output tag (*likely*); entry2: 0, 1 or 2 (open) |
+
+### Vertex layouts (vectors of 3 floats, 12 bytes each)
+
+| Entry | Per vertex | Vectors |
+|---|---|---|
+| entry2 (lit) | 4 | position; unit normal; colour (0..255 scale, e.g. 200); (s, t, aux) - aux 0..357 on cars, 0..178.5 in the shop (open: not q) |
+| entry5 (unlit) | 4 | position; (0, 0, 1) or zeros (unused normal); colour (0..255); (s, t, q = 1) |
+| entry4 (terrain) | 5 | position (tile-local, 0..1600); three colour vectors A, B, C; (s, t, q = 1) |
+| entry3 (billboard) | 1 + 5 per corner | centre position; then per corner: offset (dx, dy, 0) in screen-aligned units, colours A, B, C, (s, t, q) |
+| entry6 (sky) | 3 | the vertex block starts with the GIF tag as one V3 vector; then position, colour (128 = 1.0), (s, t, q) |
+
+Terrain colours: the time-of-day weights at VU 0x13 (x day, y dusk, z night by the clock in
+`updateTimeOfDayLight` 0x225988) blend them. Colour A looks like day and C like night; B's first
+component is always 1.0 in town tiles and 0..1 on courses, so B is not a plain RGB: the exact
+mapping (which components each weight scales) is open until the entry4 reference exists.
+
+### Static or rebuilt?
+
+- All model chains on the disc are loaded once and never written afterwards: a Quick Race probe
+  (Peach Raceway, 20 s of racing) hashed 0x3FBB80..0x707B80 (car models) and 0x707B80..0x1500000
+  (course, slot 2 at 0xE57B80) and found no changed byte. Only `vifCallModel` references them.
+- Per frame, the EE writes only: matrices, camera, colours, materials (`vifBatchRegs`), and the
+  packet chain itself (0x1750BF0 / 0x1730BF0).
+- One exception: `drawArcRibbon` (0x2224F8, from 0x2207D0) recomputes 21 x 2 vertex positions with
+  VU0 macro code into the ELF chain 0x299430 every frame, then calls it (entry4).
+- Skinning/animation: none in the vertex data. Moving parts (wheels, wings, props, animated town
+  objects) are separate models with their own object matrices.
+- The minimap (`[map]` draw functions 0x242438 / 0x2427D0 / 0x242A88) is a static model too (map
+  model part B, entry5) under a map view uploaded with `vifUploadAt4`; car markers (0x242D20 ..)
+  are small models with per-car matrices.
+- Sky: static ELF chains through entry6; the dome's matrix is centred on the camera (entry7).
+- 2D (menus, HUD) does not go through these helpers' model calls: it is PATH2/PATH3 packets
+  (`vifDirect`, GS upload chains). What reaches entry2 outside the 3D scene is menu scenes with 3D
+  models (garage, car select).
+
+## Open questions
+
+- entry4/entry3 colour vectors: the exact blend (see above); entry2's third ST component.
+- The spare bit 33 of the output tag and entry2's word 3 (0/1/2: possibly which paint colour of
+  VU 0x18-0x19 applies; *guess*).
+- How a material at TOPS+0x192 is kicked across the double buffer (once, or every batch) - decides
+  whether a native path can treat materials as sticky state (assumed here).
+- `drawCarEffects` (0x225120) sub-renderers 0x224068 / 0x2243E0 / 0x2246C0 / 0x224EC0 and the prop
+  renderers 0x25BE98..0x25D5F8 are only named by their caller; `drawCarouselScene` (0x2455C0)
+  and the menu scene 0x246250 are not yet confirmed.
+- VU1 0x10-0x17 is written by several helpers with different content (light block vs view block);
+  which microprograms read which is for the microcode notes.

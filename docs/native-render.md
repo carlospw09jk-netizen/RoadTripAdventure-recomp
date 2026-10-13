@@ -247,3 +247,33 @@ mapping (which components each weight scales) is open until the entry4 reference
   and the menu scene 0x246250 are not yet confirmed.
 - VU1 0x10-0x17 is written by several helpers with different content (light block vs view block);
   which microprograms read which is for the microcode notes.
+
+## Native draw path (phase 2, branch `re/native-draw`; `RT_NATIVE_DRAW=1`, default off)
+
+What exists (fork: `gs_native_draw.{h,cpp}`, `hw/native.vert`, `gs_hw_backend.cpp`, `ps2_runtime.cpp`
+MSCAL callback, `gs_frontend.cpp` `processNativeMarker`):
+
+- **Interception** on the VIF1 worker at an MSCAL for program 2 (lit strip) or 5 (offset strip), when
+  the microcode image is Road Trip's and the batch's output tag is the strips' (PRE, triangle strip,
+  PACKED, ST/RGBAQ/XYZF2). `buildNativeDraw` copies what the program reads: the setup run's VF
+  registers (matrices, lights, fog, tints), the memory constants (entry 5) and the vertex block at TOP.
+  The batch header packet (TOP+402: TEX0 etc.) still goes out as a normal GIF packet first, its NLOOP
+  cleared as the program clears it. The run is skipped; entry 5's register side effects are applied.
+- **Order:** a 32-byte A+D marker (register 0x7D, the draw's id) goes into the PATH1 stream where the
+  XGKICK would have been. On the GS thread the frontend gives the draw to the backend
+  (`SubmitNative`) as its own closed `Batch` (state of the strip's PRIM, texture resolved as for any
+  batch), so merging, DATE, scissor, texture packs and frame buffers work as before.
+- **Fallback on the GS thread:** where the backend can't take it (map batches, the UI mask, motion
+  vectors, frame generation, a frame the classifier must see) the frontend builds the packet the
+  program would have made (`nativeReference`, bit-exact VU float arithmetic) and processes it as usual.
+- **Fallback on the worker:** programs 3, 4, 6 (clipped strips) and any odd tag run as before; counted
+  by reason in `RT_NATIVE_DRAW_LOG=1` lines (`[native] strips: ...`, every 5 s).
+- **native.vert** does per vertex what the programs do: matrices, perspective divide, XY snapped to
+  12.4 by truncation, Z as the 24-bit integer, STQ, fog, the lighting (entry 2) or offsets (entry 5),
+  colour and fog as the integers the packet carries, and drops a triangle when any of its three
+  vertices is outside the clip volume (the programs' ADC). Flat shading takes the closing vertex.
+  Differences from the VU: round-to-nearest GPU floats (rare one-step differences in truncated XY/Z).
+- **Verification:** `RT_NATIVE_DRAW_VERIFY=1` runs the microprogram as before and compares the
+  reference with its output in VU memory (STQ.w of entry 2 excluded: it carries the previous
+  vertex's fog). `tests/regression/test_native_draw.py` (hardware GS): the reference matches on every
+  strip of a Quick Race and a town drive, and the native frames match the old path's.

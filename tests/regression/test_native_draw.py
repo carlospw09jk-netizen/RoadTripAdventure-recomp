@@ -19,7 +19,7 @@ from rtharness.adventure import FIELDS, GAME_MAP, continue_to_factory, scene
 from rtharness.quick_race import COURSES, open_course, start_race
 from rtharness.town import TownDriver, TownMap, car_pose, door_quads, finish_dialogue, park_traffic
 
-HW = {"RT_GS_BACKEND": "hw"}
+HW = {"RT_GS_BACKEND": "hw", "RT_NATIVE_DRAW": "0"}  # (the old path: native draws are the default)
 NATIVE = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1"}
 VERIFY = {**NATIVE, "RT_NATIVE_DRAW_VERIFY": "1"}
 

@@ -159,8 +159,10 @@ namespace
         }
         return p;
     }
-    // Encode neg * (M * 2^E) truncated toward zero; overflow gives MAX, underflow zero.
-    uint32_t enc(bool neg, u128 M, int E)
+    // Encode neg * (M * 2^E) truncated toward zero (or, with `nearest`, rounded to nearest: M is
+    // exact or a floor of the true value with ties impossible, so the bit below the mantissa decides);
+    // overflow gives MAX, underflow zero.
+    uint32_t enc(bool neg, u128 M, int E, bool nearest = false)
     {
         const uint32_t sign = neg ? 0x80000000u : 0u;
         if (M == 0)
@@ -178,7 +180,21 @@ namespace
             mant = static_cast<uint32_t>(M << (23 - p));
             ne = E - (23 - p);
         }
-        const int biased = ne + 150;
+        int biased = ne + 150;
+        if (nearest)
+        {
+            const int sh = p - 24; // the bit below the mantissa
+            const bool up = sh >= 0 ? (((M >> sh) & 1) != 0) : false;
+            if (up)
+            {
+                ++mant;
+                if (mant == 0x1000000u)
+                {
+                    mant = 0x800000u;
+                    ++biased;
+                }
+            }
+        }
         if (biased >= 255)
             return sign | 0x7F7FFFFFu;
         if (biased <= 0)
@@ -229,7 +245,7 @@ namespace
             return neg ? 0x80000000u : 0u;
         return enc(neg, static_cast<u128>(x.m) * y.m, x.e + y.e);
     }
-    uint32_t rDiv(uint32_t a, uint32_t b)
+    uint32_t rDiv(uint32_t a, uint32_t b, bool nearest = false)
     {
         const SF x = dec(a), y = dec(b);
         const bool neg = x.neg != y.neg;
@@ -238,7 +254,7 @@ namespace
         if (x.m == 0)
             return neg ? 0x80000000u : 0u;
         const u128 q = (static_cast<u128>(x.m) << 80) / y.m;
-        return enc(neg, q, x.e - y.e - 80);
+        return enc(neg, q, x.e - y.e - 80, nearest);
     }
     u128 isqrt(u128 n)
     {
@@ -253,7 +269,7 @@ namespace
         }
         return lo;
     }
-    uint32_t rSqrtAbs(uint32_t b)
+    uint32_t rSqrtAbs(uint32_t b, bool nearest = false)
     {
         SF y = dec(b);
         if (y.m == 0)
@@ -268,7 +284,7 @@ namespace
         const int k = 46;
         M <<= (2 * k);
         e -= 2 * k;
-        return enc(false, isqrt(M), e / 2);
+        return enc(false, isqrt(M), e / 2, nearest);
     }
     uint32_t rCvtW(uint32_t b)
     {
@@ -384,7 +400,7 @@ namespace
             t.setF(0, a);
             t.setF(1, b);
             struct { const char *n; Fn fn; uint32_t want; } ops[] = {
-                {"fadd", add, rAdd(a, b)}, {"fsub", sub, rAdd(a, b, true)}, {"fmul", mul, rMul(a, b)}, {"fdiv", div, rDiv(a, b)}};
+                {"fadd", add, rAdd(a, b)}, {"fsub", sub, rAdd(a, b, true)}, {"fmul", mul, rMul(a, b)}, {"fdiv", div, rDiv(a, b, true)}};
             for (auto &o : ops)
             {
                 t.setF(2, 0x12345678u);
@@ -403,14 +419,14 @@ namespace
             t.setF(1, b);
             sq(g_rdram, t.c, g_runtime);
             ++g_checks;
-            if (!sameFloat(t.getF(2), rSqrtAbs(b)))
-                fail("fsqrt", "random", "b=" + hex(b) + " got " + hex(t.getF(2)) + " want " + hex(rSqrtAbs(b)));
+            if (!sameFloat(t.getF(2), rSqrtAbs(b, true)))
+                fail("fsqrt", "random", "b=" + hex(b) + " got " + hex(t.getF(2)) + " want " + hex(rSqrtAbs(b, true)));
             t.setF(0, a);
             t.setF(1, b);
             rs(g_rdram, t.c, g_runtime);
             if (!isZeroBits(b))
             {
-                const uint32_t want = rDiv(a, rSqrtAbs(b));
+                const uint32_t want = rDiv(a, rSqrtAbs(b, true), true);
                 ++g_checks;
                 if (!sameFloat(t.getF(2), want))
                     fail("frsqrt", "random", "a=" + hex(a) + " b=" + hex(b) + " got " + hex(t.getF(2)) + " want " + hex(want));

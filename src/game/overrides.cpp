@@ -469,7 +469,7 @@ namespace
         else
             std::cerr << "[roadtrip] camera builder 0x21F698 not found: widescreen 3D unavailable\n";
 
-        if (ps2x::gs::nativeLogOn() && (g_callModel = runtime.lookupFunction(kCallModel)))
+        if ((ps2x::gs::nativeLogOn() || ps2x::gs::nativeRecordsVerify()) && (g_callModel = runtime.lookupFunction(kCallModel)))
             runtime.replaceFunction(kCallModel, callModelNoted);
     }
 }

@@ -20,7 +20,7 @@ from rtharness.quick_race import COURSES, open_course, start_race
 from rtharness.town import TownDriver, TownMap, car_pose, door_quads, finish_dialogue, park_traffic
 
 HW = {"RT_GS_BACKEND": "hw", "RT_NATIVE_DRAW": "0"}  # (the old path: native draws are the default)
-NATIVE = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1"}
+NATIVE = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "1000"}
 VERIFY = {**NATIVE, "RT_NATIVE_DRAW_VERIFY": "1"}
 
 
@@ -265,7 +265,7 @@ def town_map_run(game_factory, options, test_data, env, name):
     from test_map_overlay import ENHANCED, HW_WINDOW, PEACH_TOWN, drive_into_town, map_state, wait_for, window_shot, box_pixels
     edits = {FIELDS["location"]["offset"]: bytes([PEACH_TOWN]), FIELDS["licence"]["offset"]: bytes([2])}
     game = game_factory(checkpoint="adventure_first_save", progress_edits=edits, settings=ENHANCED, render=True,
-                        env={**HW_WINDOW, **env, "RT_NATIVE_DRAW_LOG": "1"}, name=name)
+                        env={**HW_WINDOW, **env, "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "1000"}, name=name)
     drive_into_town(game, options, test_data)
     m = wait_for(game, lambda m: m["shown"])
     game.run(60)

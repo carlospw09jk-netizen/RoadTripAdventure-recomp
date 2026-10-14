@@ -84,6 +84,31 @@ and the second screen already compute the projection (`rt::game::mapPoint`) for 
    (`WideLayout::frameKindUnknown`), i.e. on the first packet or native draw of a frame only. 8 of 8 passes
    afterwards (about 1 in 2 failed before); `test_map_overlay.py` and `test_native_map_layer` pass.
 
+2. **Audit (hardware GS, native on, Map = Enhanced; `tests/regression/test_map_audit.py`)**: no further
+   defect found. Four Quick Race courses (0, 2, 4, 6): kind 2, overlay on, the box and its image coordinates
+   steady over 12 samples (spread < 0.02), the course map identical to the game's own by eye (Tin Raceway's
+   clutter is the game's); the attract demo keeps the game's map (dest 'game', no overlay); Q's Factory's
+   menu has no overlay; a 16:9 window with HUD 4:3 and HUD edges: the overlay follows the narrowed / edge
+   placement (in 4:3 mode the published outer box may reach further left than the map, since it only grows
+   while a map is up: harmless, the image and box stay paired). Not exercised: 120 Hz generated frames (the
+   lockstep harness hangs with frame generation on; the layer is published once per game frame and drawn per
+   host frame, so a generated frame repeats the real one's map), the second screen (Thor only), the map after
+   a race or a building (the 3-frame clear is unit-tested through the router, not driven).
+3. **Other consumers of the frame-kind verdict.** The classifier already ran for every consumer that needs
+   per-vertex data: widescreen (`active()`), the depth snapshot (`WantsDepthSnapshot`) and the UI mask /
+   motion (`WantsVertexSideband`) each force the pass, so their verdicts were always current. The only
+   readers that ran without any of them were `lastFrameWas2D()` users: `MapView::overlayMap` (fixed here),
+   the raylib presenter's pillarbox choice (ignored at 4:3 anyway) and the per-frame-buffer slots
+   (`m_wide2DByFbp`) the presenter latches. A window switched from 4:3 to wide mid-session also used to start
+   from a stale verdict. Nothing else needs the pass.
+
+Plan (not started): draw the map from the game's data. A map's inputs are all static or per-frame words:
+the tile map models (`fieldMapModels`, part B strips), the view block (`mapViewMatrix` from the zoom table /
+`raceMapPlacements` and the subject's position), the colour sets and the marker tables. A renderer would
+rebuild the strips as one triangle list per tile at load, draw them with its own pipeline into a map target at
+any resolution and put the markers on top from the lists in section 1, leaving the bezel to the UI layer; it
+would remove the dependence on TEST_2 recognition (`isMap`) and on the batch box heuristics (`noteMapBox`).
+
 Open: the map is still drawn from the captured GS batches (native strips into the map layer). Section 1 lists
 what a map renderer from the game's own data needs (model strips, view block, scissor, colour sets); the
 batches already arrive as `NativeDraw` records, so the layer is independent of the GS's packet emulation on the

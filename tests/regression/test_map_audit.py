@@ -61,6 +61,34 @@ def test_no_map_in_the_attract_demo(game_factory):
         assert m["dest"] == "game" and not m["overlay"], m
 
 
+@pytest.mark.parametrize("hud", ["4:3", "edges"])
+def test_town_map_in_a_wide_window(game_factory, options, test_data, hud):
+    """16:9 window: the map overlay keeps its shape and sits where the HUD placement puts the game's
+    map (4:3 centred: inside the middle 4:3; edges: at the window's left edge)."""
+    from rtharness.adventure import FIELDS
+    from test_map_overlay import PEACH_TOWN, drive_into_town
+    edits = {FIELDS["location"]["offset"]: bytes([PEACH_TOWN]), FIELDS["licence"]["offset"]: bytes([2])}
+    wide = ENHANCED.replace('map = "enhanced"', f'map = "enhanced"\naspect = "16:9"\nhud = "{hud}"\nwidth = 1600\nheight = 900')
+    game = game_factory(checkpoint="adventure_first_save", progress_edits=edits, settings=wide, render=True, env=HW_WINDOW)
+    drive_into_town(game, options, test_data)
+    m = wait_for(game, lambda m: m["shown"] and m["overlay"], 600)
+    assert m["dest"] == "overlay" and m["overlay"], m
+    shot = window_shot(game, test_data / "runs" / f"map_audit_wide_{hud.replace(':', '')}.png")
+    h, w = shot.shape[:2]
+    m = map_state(game)
+    assert m["overlay"], m
+    rect = m["rect"]
+    aspect = (m["picture"][2] - m["picture"][0]) * rect[2] * w / ((m["picture"][3] - m["picture"][1]) * rect[3] * h)
+    # the game's own map window is 112 x 51 field pixels at 4:3 = about 1.65:1 with its bezel
+    assert 1.0 < aspect < 2.4, f"the map keeps its shape ({aspect:.2f}): {m}"
+    # (the outer box only grows while a map is up: in 4:3 mode it may reach further left than the narrowed map)
+    far = m["picture"][2]
+    if hud == "edges":
+        assert far < 0.3 and m["picture"][0] < 0.06, f"the map sits at the left edge: {m['picture']}"
+    else:
+        assert far > 0.3, f"the map stays in the 4:3 middle: {m['picture']}"
+
+
 def test_no_map_at_the_factory(game_factory):
     """Q's Factory's menu draws no map: nothing of ours is laid over it, and nothing lingers."""
     from rtharness.adventure import continue_to_factory

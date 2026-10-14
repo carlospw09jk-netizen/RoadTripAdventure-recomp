@@ -463,3 +463,147 @@ Still tied to the old paths (to remove, in this order):
    with paraLLEl-GS goldens in `rtharness/goldens.py`).
 7. Windows and Android CMake branches that link `parallel-gs` for Granite: they link
    `granite-vulkan` directly with OFF; check each once.
+
+  strip of a Quick Race and a town drive, and the native frames match the old path's.
+
+### Thor profile of native draws, the compute passes, the model cache (branch `re/native-cache2`)
+
+**Where the time went** (Thor dev app, Peach Town state `m_town`, 60 Hz, `RT_GPU_TIMES=2`, `RT_HWGS_STATS=1`, simpleperf on `GifVif1Worker` / `GsThread`
+with `--call-graph fp`; `scripts/native_sample.py` is the Mac equivalent, `RT_NATIVE_DRAW_LOG=1` names the chains):
+
+- **GPU:** one draw call per strip (~10,000 a frame, most of them a few triangles) cost Adreno ~4 us of GPU each: 38% busy (old path, a few big draws)
+  -> 94% (native, one draw per strip), with the vertex shader's ALU irrelevant (skipping the clip tests, the lighting and the flat-shading extra
+  vertex left it at 87%; with one draw call per batch and the first draw's data it went back to 45%). Not descriptor or UBO binding either
+  (binding the first draw's data only: 85%). **Fix:** `native_xform.comp`, two compute passes per recorded frame (a thread per strip vertex: position,
+  fog, colour, motion into a scratch record; a thread per triangle corner: drop the ADC triangles, write the HwVertex), so a batch of strips is one
+  ordinary draw again. 38% -> 52-59% busy; the rest is the passes themselves (~10k strips of ~25 vertices, ~700k corners a frame). Granite here has
+  no SPIRV-Cross: a compute program needs its `ResourceLayout` declared by hand (without it the bindings are silently empty).
+- **CPU:** the VIF1 worker is the busy thread (EE blocked on it ~20 ms a frame at 36 fps). Per draw it did: a 2.5 KB `NativeDraw` zero-filled and
+  malloc'd (freed on the GS thread: scudo cross-thread, ~30% of the worker), `classifyStrip` (double maths per vertex, 7-9%), `nativeClippedReference`
+  for the ~2% of strips the volume's edge cuts (11-13%: vu1hle allocates a vector per kicked packet), two GIF packets (header, marker) each drained
+  at once, a mutex on the draw queue contended with the GS thread (cas on the Thor's little cores: 15-25%), counters (atomics) on every draw.
+  **Done:** draws come from a pool (an entry is free when only the pool holds it; vectors keep their capacity; no cross-thread free), the queue is
+  lock-free (the marker packet's passage through the GIF queue orders the publication), the packets are handed over every 16th draw, counters count
+  only while logging, the vertex copy is an `assign` (no zero fill first). Peach Town at 60 Hz: 36 fps -> 60 fps.
+- **What is left:** the worker still spends ~1.6-1.9 GHz-equivalent on native draws against ~1.4 for the whole old path (the lean-compiled VU1 programs run a
+  strip in ~1 us), and the GS thread ~1.6-1.8 against ~1.2 (`processNativeMarker`, `SubmitNative`, `openFor`, `record`). Per program on the Thor
+  (`RT_NATIVE_ONLY=<programs>` takes only those on the worker): 2 and 5 together +0.1 worker, +0.3 GS; 4 alone +0.4 worker, +0.6 GS, +70 MHz GPU;
+  3 and 6 together neutral. So at 60 Hz in Peach Town and 120 Hz in Fuji City native on is still no better than the VU1 + GS path, and where it is
+  worse the frame skip (Auto) starts skipping 3D frames and pausing generated frames: that is the screen flashing seen with `RT_NATIVE_DRAW=1`
+  (skip levels 1-2 in the `[perf]` lines, `shown` falling from 120 to 40-56 and back). It cannot beat the old path while each strip costs a few
+  microseconds of marshalling; the floor for a native draw has to be ~0.2 us.
+- **The design that gets there** (not built): the model chains never change, so parse each once (address -> batch list: program, tag, vertex block,
+  material registers) and keep the vertices on the GPU; the VIF1 worker then needs no UNPACK and no copy of a model's vertices, only each object's
+  matrices from the setup run, written as one record (~0.4 KB) into a per-frame array; classification becomes a per-model bounding box against the
+  object's clip matrix (only a box that crosses the volume takes the CPU's slow path); the frontend gets one marker per run of draws, not per draw.
+  The model cache below is the first piece (it keys on content hash; keying on the chain's guest address, which the chain walk records with
+  `RT_NATIVE_DRAW_LOG`, avoids hashing and the copy).
+
+**Model cache** (`NativeModel`, `RT_NATIVE_MODEL_CACHE=1`; off by default: hashing each block cost the worker a fifth of its time): the block a model chain
+unpacks, W lanes dropped (V3 UNPACKs leave W as the last data had it), looked up by a 64-bit CRC32C key of X, Y, Z of each record, 99.7-100% hits
+(5,000-20,000 models, 1-5 MB); the backend puts a model in a 32 MB arena (host-visible storage buffer) when it has been drawn twice. The ribbon at
+0x299430 is the only chain the game rewrites (a new block each frame, never drawn twice, streamed). Pictures are bit-identical with and without the
+cache and arena (`test_model_cache_changes_nothing`). Strips of programs 2 and 5 drop their own copy of the vertices when they have a model;
+`nativeVerts()` rebuilds it (W = 0) for what runs on the GS thread (the reference, CPU triangles).
+
+**Batching** (`Batch::moreNative`): native draws that follow each other with nothing between and the same state share one `Batch`; with the compute
+pass the batch's vertices are one run, drawn with one call.
+
+**Attribution** (`RT_NATIVE_DRAW_LOG=1`): the VIF1 worker keeps, per DMA chain, the guest source address of each payload
+(`PS2Memory::vif1UnpackSource`), so each draw knows where its vertex block came from. The 5 s log lists the top 20 chains: region, the `vifCallModel`
+call (0x227048, hooked in `overrides.cpp` while logging) whose chain starts at or before it and its return address (the renderer), gpu /
+cpu-reference / fallback counts by reason, and how many distinct blocks the chain produced (more than one = not static). `python3
+scripts/native_attrib.py <app.log>` names the renderers from `config/game_symbols.toml`. Callers of 0x227048 and the chains they pass: field tiles and
+their extra layer and the scene functions pass cell chains from the tables at 0x177AB20..0x177AB80; cars and wheels `carModels` / 0x177EAC8.. + 0x10;
+ELF chains by constant: car shadow 0x290570 (`drawCarsField`, `drawCarsAction`, 0x223588), 0x290670 (0x2238A0), 0x290770 (0x223B30), minimap markers
+0x290870 / 0x290940 (0x242D20..0x243398), sky 0x290A40 / 0x2962E0 / 0x298A50, arc ribbon 0x299430 (`drawArcRibbon`, the only static writer into a
+chain: nothing else stores into 0x290000..0x29A000 chain data); props 0x177F5xx model pointers (0x25BE98..0x25D5F8), coins 0x335718. In a Peach
+Town drive the draws come from `drawCar` (cars, 0x221f2c) and `drawCoins` (0x241e50) among the entry-2 chains; terrain cells are entry 4.
+
+Switches: `RT_NATIVE_PATH=vertex` draws each strip with native.vert (one call each; the old design), `RT_NATIVE_MODEL_GPU=0` keeps the cache's blocks out of
+the arena, `RT_NATIVE_ONLY=<programs>` (worker) and `RT_NATIVE_DRAW_ENTRIES` (GS thread, the rest built as packets) for A/B.
+
+### What the native path still takes from the packet GS (to cut when the old renderers leave the app)
+
+- **GS state** arrives as GIF packets through `GS::processGIFPacket` / `writeRegisterUnlocked`: every batch's header (TEX0, CLAMP, ALPHA, TEST, ... from TOP + 402)
+  is submitted as a PATH1 packet, the 2D/PATH2/PATH3 traffic too, and `processNativeMarker` writes PRIM from the draw's tag. The draw's state
+  (`buildDrawBatch`, `m_drawStateSerial`), the texture (`resolveTexture`: GS memory reads, CLUT, paletted decode, texture packs) and the frame/Z targets all
+  come from the frontend's register model. A native renderer wants a draw record that carries its material (TEX0/CLAMP/ALPHA/TEST/FRAME/ZBUF) itself.
+- **Ordering** with the rest of the GS traffic is the marker packet in the PATH1 stream (one 32-byte packet per draw plus the header packet), and the
+  VU1 microprograms still run for the setup entries (0, 1, 7: camera and object matrices into VU memory, which `buildNativeDraw` reads back as
+  `state.vf` / VU data) and for everything the native path declines (`RT_NATIVE_ONLY`, a bad tag, a deopt).
+- **Classifier and layout**: `WideLayout` (HUD vs 3D verdicts, `vertexClass`, `xScale`/`xBias`), `MotionTracker` (`curC`/`prevC`) and the UI mask / map layer's
+  CPU triangles (`nativeScreenTriangles`, built from `nativeReference`'s packet) are the frontend's; the declined cases fall back to
+  `nativeReference` + `processGIFPacket`.
+- **The CPU's share**: clipped programs (3, 4, 6) classify strips on the VIF1 worker (`classifyStrip`) and make the clipped polygons with vu1hle
+  (`nativeClippedReference`), then draw them as GIF packets.
+- **The backend**: `HwBackend::SubmitNative` still goes through `openFor` / `sameDraw` (the packet path's batch merging) and `Batch`es recorded by `record()`.
+
+### Model chains taken whole, marker runs (RT_NATIVE_CHAINS=1, opt-in)
+
+The VIF1 worker can recognise a model chain's payload in the stream (the DMA chain walk records each payload's guest address and length, `srcMap`;
+`nativeChainFind` checks it byte for byte against its parsed copy) and draw its batches from the parse: nothing is unpacked into VU memory, the tag, the
+vertex block (kept as `NativeModel`, also the GPU arena's block), the material (as the GIF packet) and the bounding box come from the parse, a strip whose
+box is inside the clip volume or wholly beyond one plane is classified from the box (`classifyBox`), anything else goes through `classifyStrip` and the
+reference as before, and a run that needs the microprogram gets its UNPACKs written into VU memory first (`nativeChainMaterialize`). Markers go out as one
+packet per run of consecutive draws (`queueNativeMarker`, at most 48; the frontend loops `processNativeMarker` over the run).
+Measured on the Mac (town, `RT_PERF_LOG`): model chains on or off changes the worker's busy time by under 1 point, because **every model chain the game
+calls is exactly one batch (one strip)**: there is nothing to amortise across a chain, and the per-strip costs (the pooled draw, the constants, the
+publish, the GS thread's `processNativeMarker` / `openFor` / `SubmitNative`) are the same either way. The hook that would remove them is above the
+chain: the renderer functions (or `vifCallModel` plus the object-matrix UNPACK) emitting one record per object and the GS taking runs of draws as one
+`SubmitNativeRun`; a GPU-driven per-object table with indirect draws is the design that can get a strip under ~0.2 us.
+Mac town at 60 fps (`VU1` / `GS` busy %): old path 19.5 / 15.5, native 25.8 / 44.5; race 10.8 / 5.5 against 13.0 / 7.5. The GS thread's extra is mostly the
+per-draw frontend (classifier, `nativeScreenTriangles` for HUD draws), the device-lock waits in `openFor` (texture creation while the presenter holds it)
+and recording; the worker's: the clipped-polygon reference (~17%) and `classifyStrip` (~7%).
+
+### Where the Mac town frame goes (14 Oct 2026, `RT_HWGS_STATS=1`, `RT_NATIVE_DRAW_LOG=1`, `scripts/native_sample.py`)
+
+What the profile and the counters say, so the next step is aimed at the right thing:
+
+- **Most of what the game submits is rejected.** A town frame had ~3,800 strips per present that the clipper rejects whole (all triangles beyond one plane); they were built, queued and drawn as empty batches, each opening a state (`openFor`) and breaking the batch. They are now dropped on the worker: `nativeAllRejected` (programs 3, 4, 6, every triangle in `adc`, no clipped polygons) leaves no marker and no draw, sends only the material block (a chain sets it once for the strips after it) and runs `applyNativeSideEffects`. `RT_NATIVE_KEEP_REJECTED=1` keeps them (A/B). The backend also drops one that arrives anyway (`native draws rejected whole` in the stats). Town GS thread 32 -> 20-22% busy, race 5.5 -> 3.5%.
+- **Batches.** Town: 1,200 batches per present became ~560 (old path ~300). The map draws (274 a present) are one batch now (`Batch::mapBoxes`: the layer's box is made from per-draw bounds, so they need no vertices of their own to merge); the rest break on the PRIM flags (TME/ABE/FGE: ~105 a present), the texture or CLUT (~205), and a native draw that follows a packet batch (~110). `RT_HWGS_STATS` prints the break reasons (`state break reasons`: 1 prim flags, 8 TEX0, 9 TEX1/CLAMP/MIPTBP) and why native draws did not merge.
+- **What is left is draw count.** ~5,400 native draws a present reach the GS thread, ~0.6 us each (marker, `SubmitNative`, the batch's `moreNative` entry); they are mostly quads and 16-vertex strips of terrain and props that the game submits one call at a time (callers 0x241E50, 0x221F2C, 0x25CFD8, 0x223D2C: `RT_NATIVE_DRAW_LOG` lists them). Run-level code on the GS side cannot remove that count; a per-object record from the renderer's loop (branch `re/native-records`, `gs_native_records.h`) can.
+- **Worker** (41% busy sampled; the MSCAL callback is 83% of it): `buildNativeDraw` 48% of the callback, of which the clipped reference (`nativeClippedReference`, strips crossing the volume's edge: 3.6% of the strips, ~19% of the worker) and `classifyStrip` (14%, now NEON single precision with a 1e-4 margin, short strips skip the model-box test), the rest the VIF1 unpack, the header, the queue.
+- Pictures: `test_native_draw` (44 tests incl. `reference_exact`, the old-path comparisons and the map tests) pass with all of the above.
+
+### The record path's GS side and the numbers (14 Oct 2026, merged with `re/native-records`)
+
+`GS::processNativeCallMarker` expands a call record (`docs/native-records.md`) in runs now, not strip by strip:
+
+- A strip's material block is replayed through `processNativeHeader`: the same bytes as the last block, with no other packet since (`m_gifPacketSerial`, bumped by every packet except a native marker or the block itself, and `nativeStateEpoch()`, bumped by a GS reset or a state load), are not sent again; `RT_NATIVE_HEADER_DEDUPE=0` replays all. The worker's per-strip path has the same shortcut (`PS2Memory::submitNativeHeader`).
+- `nativeCallStripFast`: the call's constants are copied once per program (`callProto`) and the strip's own parts patched in (`patchStripConstants`: entry 3's origin, the fog set of 3/4, entry 2's tint); the reference's inputs (vf, VU words 0..31) are the record's (`NativeDraw::owner`), not copied per strip. `RT_NATIVE_CALL_FAST=0` builds each strip the old way, `RT_NATIVE_CALL_FAST_CHECK=1` builds both and compares constants, tag, ADC bits and polygons (0 mismatches in town and race).
+- A strip whose triangles the clipper all rejects (about 3,700 of ~8,800 strips a town frame) is classified, found rejected and its scratch draw reused: no draw, no batch, no backend call (`RT_NATIVE_CALL_REJECT=0` off).
+- The strips that remain go to `processNativeDrawList` and `HwBackend::SubmitNativeRun`: one call per PRIM, one lock, draws appended to the batch.
+- The strips are built in the VU's float mode (`NativeRoundingScope`) and the backend is called outside it.
+
+Mac M3 Max, 60 Hz, hardware GS, [perf] busy %, town / race (the machine was shared, so ~±2): per-strip native before these steps 23 / 12 worker, 44.5 / 5.5 GS; now with `RT_NATIVE_RECORDS=1` worker 4 / 3, GS 20 / 8.5, process CPU 41 / 35.5; the old VU1 path in the same sessions worker 21 / 14, GS 16 / 6.5, CPU 51 / 40. The worker is far under the old path and the process uses less CPU; the GS thread is still ~4 points (town) and ~2 (race) over it. What is left of its expansion (~1.4 ms a frame for ~8,800 strips, ~150 ns each) is the strip classification (float, NEON; ~0.3 ms), the backend run (~0.35 ms), the material blocks (~0.15 ms) and exact clipping of the strips that cross the volume's edge.
+
+### Thor, native with records against the old path (14 Oct 2026, dev app, `scripts/android/measure.py`, 30 s, medians, ss 8)
+
+`RT_NATIVE_DRAW=1 RT_NATIVE_RECORDS=1` in env.txt for the runs only (removed afterwards; Android native stays off by default). Fuji City and Peach Town states, circling. GHz are clock-weighted per thread (the Worker is GifVif1Worker). "old" = `RT_NATIVE_DRAW=0`; "rec1" is the first build with records (the GS thread expanded every strip), "rec" the final one (strips built by the worker when it publishes the record, run submit, shared objects in the GPU table, motion in the run path).
+
+| scene | config | path | game / shown fps | Worker GHz | GS GHz | GPU busy % | late frames |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Fuji | 60 Hz | old | 60 / 60 | 1.25 | 0.83 | 44 | 2 |
+| Fuji | 60 Hz | rec1 | 59.9 / 60 | 0.24 | 1.40 | 51 | 25 |
+| Fuji | 60 Hz | rec | 60 / 60 | 0.98 | 0.86 | 51 | 10 |
+| Fuji | 120 FSR 1 | old | 59.9 / 120 | 1.22 | 1.00 | 80 | 2 |
+| Fuji | 120 FSR 1 | rec | 59.7 / 119 | 1.01 | 1.08 | 73 | 26 |
+| Fuji | 120 GSR 2 | old | 59.8 / 120 | 1.17 | 1.06 | 82 | 6 |
+| Fuji | 120 GSR 2 | rec | 59.8 / 47 | 0.86 | 1.24 | 65 | 44 |
+| Peach | 60 Hz | old | 60 / 60 | 1.56 | 1.15 | 39 | 2 |
+| Peach | 60 Hz | rec1 | 59.9 / 60 | 0.21 | 1.91 | 50 | 9 |
+| Peach | 60 Hz | rec | 60 / 60 | 1.14 | 1.30 | 50 | 6 |
+| Peach | 120 FSR 1 | old | 59.9 / 120 | 1.58 | 1.32 | 82 | 2 |
+| Peach | 120 FSR 1 | rec | 59.9 / 120 | 1.15 | 1.27 | 82 | 18 |
+| Peach | 120 GSR 2 | old | 60 / 120 | 1.53 | 1.32 | 85 | 4 |
+| Peach | 120 GSR 2 | rec | 55 / 55 | 1.01 | 1.12 | 64 | 12 |
+
+What the Thor profile (simpleperf on `GsThread`, `scripts`-less: `rtc/thor/prof_thor.sh`) said, in the order it was fixed: (1) rec1: 73% of the GS thread was `processNativeCallMarker` (strip classification 13%, shared_ptr atomics 16%, the clipped reference 10%, pool 9.5%); the expansion moved to the worker, draws borrow their model and the record, rejected strips are not built. (2) `prepareNative` filled a 624-byte table entry per draw into host-visible memory (14% of the GS thread): objects are shared now, 160 bytes a draw. (3) At 120 Hz with GSR 2 or TAA (motion vectors wanted) the run path was off (`WantsVertexSideband`), every strip went one by one with its CPU classification: the run path serves them now (matrices named once per call).
+
+Where it stands: with records the worker costs 20-35% less than the old path's VU1 work, the GS thread is at parity at 60 Hz in Fuji and 10-15% above it in Peach, and 120 Hz with FSR 1 holds 120 shown in both towns. 120 Hz with GSR 2 still loses frame generation (the frame-skip rule engages on late frames of 25-30 ms in which the GS thread works ~18 ms: the HUD phase, where `!plainPath1` makes every strip build its reference packet for the widescreen classifier, `nativeClippedReference` 7.5% of the GS thread, is the next thing to remove). Present dumps of native frames at 120 Hz FSR 1 show correct pictures (`v*_0.png` real frames; generated frames were not captured in the thinned set), and the late-frame log (`[late]`: EE blocked 20 ms of 26, GS 18) points at frame skip pausing generation, not a bad generated frame, as the flashing's cause.
+
+### HUD classification and the final gates (14 Oct 2026)
+
+- The widescreen classifier is given a packet of only the strip's tag and its screen X, Y, Z (`nativeClassifierPacket`, `vu1hle::stripScreenXyz`, programs 2 and 5, exact as the microprogram works them out) instead of the full VU reference; `RT_NATIVE_LEAN_CLASSIFIER=0` restores the reference, `RT_NATIVE_LEAN_CHECK=1` compares (0 mismatches in test_widescreen and the town / quick race native tests with records). On the Thor the call fell from 7.5% to 4.4% of the GS thread, but GSR 2 at 120 Hz did not recover frame generation (Fuji 59.8 / 47.5 shown, Peach 53.6 / 53), so records stay off by default. The GS thread there is `record` 39% (`prepareNative`'s table fill 11.6% self, memcpy 9%) and the record expansion 40%.
+- Suites on the dev tree with the reference renderers (`-DRT_REFERENCE_RENDERERS=ON`, `build/macos-ref`), `RT_NATIVE_RECORDS=1`, goldens of re/integration 59ea667: pgs 3 failed of 190 (Sandpolis Night Glow A/B, test_field_area_map_is_routed: the known ones); hw 4 failed (Sandpolis Night Glow A/B, 2p River_Raceway as known, and test_native_map_layer at a coarse difference of 6.03 against a limit of 6.0, which measured 3.7 and 7.1 on other runs).

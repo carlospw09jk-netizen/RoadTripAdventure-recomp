@@ -51,6 +51,16 @@
 0x225608 = { name = "drawSkyDome", note = "sky: ELF chain 0x290A40 (entry6), matrix through entry7" }
 0x2256A8 = { name = "drawSkyLayers", note = "sky layers: ELF chains 0x2962E0 / 0x298A50 (entry6)" }
 0x241D38 = { name = "drawCoins", note = "Choro Q coins (coin table 0x2A3970)" }
+0x223588 = { name = "drawCarShadow", note = "a car's shadow quad: colours (VU 0x18), object matrix, ELF chain 0x290570 (entry5); guess from its chain" }
+0x2238A0 = { name = "drawCarEffectA", note = "a car effect through ELF chain 0x290670 (called twice); sub-renderer of drawCarEffects, guess" }
+0x223B30 = { name = "drawCarEffectB", note = "a car effect through ELF chain 0x290770 (called twice); sub-renderer of drawCarEffects, guess" }
+0x242D20 = { name = "drawMapMarkerA", note = "minimap markers through ELF chains 0x290870 / 0x290940; guess" }
+0x242FE8 = { name = "drawMapMarkerB", note = "minimap marker through ELF chains 0x290870 / 0x290940; guess" }
+0x243338 = { name = "drawMapMarkerC", note = "minimap marker through ELF chain 0x290940; guess" }
+0x243398 = { name = "drawMapMarkerD", note = "minimap marker through ELF chain 0x290940; guess" }
+0x244D60 = { name = "drawCarouselCells", note = "vifCallModel of one cell chain (0x177AB24 table); the carousel's course tiles, guess" }
+0x244F60 = { name = "drawCarouselCar", note = "car models of the carousel / select screens (0x177F478 table, carModels); guess" }
+0x22CC38 = { name = "drawModelAt177F358", note = "calls the model at 0x177F358 (+0x10); unknown scene" }
 0x25D028 = { name = "drawAnimatedProps", note = "dispatch over 0x2C43B0 to the prop renderers 0x25BE98..0x25D5F8" }
 0x2455C0 = { name = "drawCarouselScene", note = "likely: Quick Race course carousel (tile 1 cells)" }
 0x21F698 = { name = "buildCamera", note = "fills a 0x190-byte camera block (matrices at +0, +0x40, +0x80, +0xC0, +0x100)" }
@@ -100,6 +110,10 @@
 0x290A40 = { name = "chainSkyDome", note = "VIF chain in .vutext (entry6)" }
 0x2962E0 = { name = "chainSkyLayerA", note = "VIF chain in .vutext (entry6)" }
 0x298A50 = { name = "chainSkyLayerB", note = "VIF chain in .vutext (entry6)" }
+0x290670 = { name = "chainCarEffectA", note = "VIF chain in .vutext, drawn by drawCarEffectA" }
+0x290770 = { name = "chainCarEffectB", note = "VIF chain in .vutext, drawn by drawCarEffectB" }
+0x290870 = { name = "chainMapMarkerA", note = "VIF chain in .vutext (minimap markers)" }
+0x290940 = { name = "chainMapMarkerB", note = "VIF chain in .vutext (minimap markers)" }
 0x299430 = { name = "chainArcRibbon", note = "VIF chain in .vutext whose vertices drawArcRibbon rewrites per frame (entry4)" }
 0x29D150 = { name = "paintIntensity", note = "16 floats 0.1..0.8: car colour nibble -> intensity" }
 0x29D080 = { name = "tileQuadrantOrigins", note = "per quadrant: x, ?, z origin (qword) for vifSetBatchOffset" }

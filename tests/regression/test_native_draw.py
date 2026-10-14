@@ -20,7 +20,7 @@ from rtharness.quick_race import COURSES, open_course, start_race
 from rtharness.town import TownDriver, TownMap, car_pose, door_quads, finish_dialogue, park_traffic
 
 HW = {"RT_GS_BACKEND": "hw", "RT_NATIVE_DRAW": "0"}  # (the old path: native draws are the default)
-NATIVE = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1"}
+NATIVE = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "1000"}
 VERIFY = {**NATIVE, "RT_NATIVE_DRAW_VERIFY": "1"}
 
 
@@ -265,7 +265,7 @@ def town_map_run(game_factory, options, test_data, env, name):
     from test_map_overlay import ENHANCED, HW_WINDOW, PEACH_TOWN, drive_into_town, map_state, wait_for, window_shot, box_pixels
     edits = {FIELDS["location"]["offset"]: bytes([PEACH_TOWN]), FIELDS["licence"]["offset"]: bytes([2])}
     game = game_factory(checkpoint="adventure_first_save", progress_edits=edits, settings=ENHANCED, render=True,
-                        env={**HW_WINDOW, **env, "RT_NATIVE_DRAW_LOG": "1"}, name=name)
+                        env={**HW_WINDOW, **env, "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "1000"}, name=name)
     drive_into_town(game, options, test_data)
     m = wait_for(game, lambda m: m["shown"])
     game.run(60)
@@ -338,3 +338,31 @@ def test_native_widescreen_hud(game_factory, name):
     ok, detail, _ = goldens.hw_verdict(old.array(), new.array())
     print(detail)
     assert ok, detail
+
+@pytest.mark.parametrize("name", list(SCENES))
+def test_model_cache_changes_nothing(game_factory, name):
+    """Vertex blocks from the model cache (RT_NATIVE_MODEL_CACHE=1: resident GPU buffers) draw the very same picture as
+    blocks streamed with each draw (RT_NATIVE_MODEL_CACHE=0), and the cache is really used."""
+    import numpy as np
+
+    uncached = {**NATIVE, "RT_NATIVE_MODEL_CACHE": "0"}
+    cached = {**NATIVE, "RT_NATIVE_MODEL_CACHE": "1"}
+    game, play = SCENES[name](game_factory, uncached, f"cache_off_{name}")
+    play(game)
+    a = game.frame().array()
+    game.close()
+
+    game, play = SCENES[name](game_factory, cached, f"cache_on_{name}")
+    play(game)
+    b = game.frame().array()
+    text = log_of(game)
+    lines = [l for l in text.splitlines() if l.startswith("[native] strips") and "cache:" in l]
+    print("\n".join(lines[-2:]))
+    resident = sum(int(x) for x in re.findall(r"resident draws (\d+)", text))
+    streamed = sum(int(x) for x in re.findall(r"streamed (\d+)", text))
+    hits = sum(int(x) for x in re.findall(r"blocks hit (\d+)", text))
+    misses = sum(int(x) for x in re.findall(r"miss (\d+) \(", text))
+    print(f"{name}: resident draws {resident}, streamed {streamed}; blocks hit {hits}, miss {misses}; "
+          f"pixels differing: {np.mean(np.any(a != b, axis=2)) * 100:.4f}%")
+    assert resident > 0, "no draw used a resident buffer"
+    assert np.array_equal(a, b)

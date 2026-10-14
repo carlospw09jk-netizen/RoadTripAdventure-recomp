@@ -705,13 +705,44 @@ class TownDriver:
             self.direct_last = (game.vblank, (x, z))
         game.step(vblanks, ["cross"], steer_towards(x, z, heading, *goal))
 
-    def chase(self, slot: int, name: str | None = None, timeout_vblanks: int = 60 * 180) -> bool:
+    def bring_to_car(self, slot: int, distance: float = 30.0) -> None:
+        """Moves town car `slot` (an NPC) to `distance` units ahead of our car: its position and
+        the seven world-space points the game keeps for it (car + 0x80.., 16 bytes apart) shift
+        together; its road logic carries on from there. A shortcut for a chase our car cannot win
+        (see chase)."""
+        game = self.game
+        x, z, heading = car_pose(game)
+        tx, tz, _ = car_pose(game, slot)
+        dx = x + distance * math.cos(heading) - tx
+        dz = z + distance * math.sin(heading) - tz
+        base = CARS_BASE + slot * CAR_STRIDE
+        raw = bytearray(game.read(base, 0xF0))
+        for offset in [0x0] + list(range(0x80, 0xF0, 0x10)):
+            px, pz = struct.unpack_from("<2f", raw, offset)[0], struct.unpack_from("<f", raw, offset + 8)[0]
+            struct.pack_into("<f", raw, offset, px + dx)
+            struct.pack_into("<f", raw, offset + 8, pz + dz)
+        game.write(base, bytes(raw))
+        self.note(f"brought car {slot} {distance:.0f} ahead")
+
+    def chase(self, slot: int, name: str | None = None, timeout_vblanks: int = 60 * 180,
+              bring_after: int | None = 60 * 40) -> bool:
         """Drives into town car `slot` (an NPC) until its dialogue opens. With `name`, other
-        NPCs met on the way are talked through and the chase goes on."""
+        NPCs met on the way are talked through and the chase goes on.
+
+        The chase follows the planner's roads, which are only as good as the ground map (a car
+        that starts on a slope the map calls impassable keeps hitting the same wall, and an NPC
+        on a loop meets it only by luck). When `bring_after` vblanks pass with no contact the NPC
+        is brought in front of the car (`bring_to_car`) and the chase goes on, again every
+        `bring_after` vblanks: the contact itself is still driven. None: never."""
         game = self.game
         end = game.vblank + timeout_vblanks
+        next_bring = None if bring_after is None else game.vblank + bring_after
         history: list[tuple[int, float, float]] = []
         while game.vblank < end:
+            if next_bring is not None and game.vblank >= next_bring and not dialogue_open(game):
+                self.bring_to_car(slot)
+                history.clear()
+                next_bring = game.vblank + bring_after
             if dialogue_open(game):
                 game.release()
                 who = self.wait_for_speaker(120)

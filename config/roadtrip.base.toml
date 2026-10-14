@@ -15,7 +15,16 @@ stubs = []
 # Functions to emit as TODO wrappers instead of recompiling.
 skip = []
 # Additional entry points (e.g. function-pointer targets found while debugging).
-entry_points = []
+# The game's own libm functions that used to be host stubs (see drop_stubs): recompiled so the
+# game's maths runs the game's code (docs/recompiler-accuracy.md).
+entry_points = [
+  "cos@0x00274810",
+  "floor@0x00277340",
+  "fabs@0x00277308",
+  "__ieee754_rem_pio2f@0x002752C8",
+  "__kernel_cosf@0x002767C8",
+  "__kernel_sinf@0x002771E0",
+]
 
 # Names to remove from the analyzer's suggestions.
 drop_stubs = [
@@ -54,6 +63,17 @@ drop_stubs = [
   # reaches it. The runtime stubs dropped sceSdSetParam (Sound Volume) and sceSdSetEffectAttr (reverb).
   "sceSdRemoteInit",
   "sceSdRemote",
+  # newlib's libm, which the game's sinf/cosf (recompiled) call. The host stubs read the argument
+  # from $f12 as a float, but cos/floor/fabs take a soft-float double in a GPR, and the stubs for
+  # __kernel_sinf / __kernel_cosf / __ieee754_rem_pio2f computed sinf(x + y) and a float-only
+  # reduction (x - n * pi/2 in single precision): sinf and cosf differed from the game's by up to
+  # an ulp or more, so every rotation matrix did. The game's own code is exact by construction.
+  "cos",
+  "floor",
+  "fabs",
+  "__ieee754_rem_pio2f",
+  "__kernel_cosf",
+  "__kernel_sinf",
 ]
 drop_entry_points = []
 

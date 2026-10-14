@@ -210,6 +210,6 @@ def test_ski_jump_lands(town):
     result = ski_jump(game)
     assert "Congratulations" in result, result
     best = game.u32(PROGRESS + FIELDS["ski_jump_best"]["offset"])
-    assert 90 <= best < 140, f"jumped {best} m (the stock car flies about 101 m)"
+    assert 90 <= best < 140, f"jumped {best} m (the stock car flies about 91 m with the EE float mode, 101 m before it)"
     finish_dialogue(game, decline=True)  # no second try
     assert scene(game) == SCENE_TOWN

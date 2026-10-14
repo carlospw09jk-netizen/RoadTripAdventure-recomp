@@ -44,6 +44,11 @@ if(WIN32)
     # Granite's DXGI swapchain interop pulls d3d12.h/ole2.h, which need the USER types raylib.h clashes with.
     set(GRANITE_VULKAN_DXGI_INTEROP OFF CACHE BOOL "" FORCE)
 endif()
+# The reference renderers (paraLLEl-GS's GS; the CPU GS cannot be split off yet) are the regression
+# suite's oracle, not part of the shipped app (DMG, APK, Windows zip): OFF by default. Dev builds
+# that run the regression goldens configure with -DRT_REFERENCE_RENDERERS=ON (docs/native-render.md).
+option(RT_REFERENCE_RENDERERS "Build the reference renderers (paraLLEl-GS) for tests" OFF)
+set(PS2X_REFERENCE_RENDERERS ${RT_REFERENCE_RENDERERS} CACHE BOOL "" FORCE)
 add_subdirectory(third_party/PS2Recomp EXCLUDE_FROM_ALL)
 
 set(PS2X_RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime")
@@ -334,10 +339,34 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_executable(paths_test tests/paths_test.cpp src/platform/Paths.cpp)
     target_include_directories(paths_test PRIVATE src)
     add_test(NAME paths COMMAND paths_test)
+    add_executable(emit_helpers_test tests/emit_helpers_test.cpp)
+    target_include_directories(emit_helpers_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRecomp/include")
+    add_test(NAME emit_helpers COMMAND emit_helpers_test)
     add_executable(wide_layout_test tests/wide_layout_test.cpp
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
     target_include_directories(wide_layout_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
     add_test(NAME wide_layout COMMAND wide_layout_test)
+
+    # The recompiler against the R5900 manuals: instructions translated by ps2_recomp's own
+    # translators, run in the EE's float mode, compared with reference models (tests/ee_semantics).
+    add_executable(ee_semantics_gen tests/ee_semantics/ee_semantics_gen.cpp)
+    target_link_libraries(ee_semantics_gen PRIVATE ps2_recomp_lib)
+    set(RT_EE_CASES "${CMAKE_CURRENT_BINARY_DIR}/ee_semantics_cases.inc")
+    add_custom_command(OUTPUT "${RT_EE_CASES}"
+        COMMAND ee_semantics_gen "${RT_EE_CASES}"
+        DEPENDS ee_semantics_gen
+        COMMENT "Translating the ee_semantics cases with ps2_recomp"
+        VERBATIM)
+    add_executable(ee_semantics_test tests/ee_semantics/ee_semantics_test.cpp "${RT_EE_CASES}")
+    set_source_files_properties("${RT_EE_CASES}" PROPERTIES HEADER_FILE_ONLY TRUE)
+    target_include_directories(ee_semantics_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include/runtime"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xIOP/include"
+        "${CMAKE_CURRENT_BINARY_DIR}" tests/ee_semantics)
+    target_link_libraries(ee_semantics_test PRIVATE rt_sse2neon)
+    set_target_properties(ee_semantics_test PROPERTIES CXX_STANDARD 20)
+    add_test(NAME ee_semantics COMMAND ee_semantics_test)
 endif()
 
 if(NOT ANDROID)

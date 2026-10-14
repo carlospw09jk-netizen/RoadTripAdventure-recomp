@@ -49,3 +49,25 @@ def test_game_map_for_comparison(game_factory, test_data):
     game._call("map", enhanced=0)
     game.run(30)
     window_shot(game, test_data / "runs" / "map_audit_course6_game.png")
+
+
+def test_no_map_in_the_attract_demo(game_factory):
+    """The demo's map stays the game's (the router never diverts it) and our overlay stays off."""
+    game = game_factory(settings=ENHANCED, render=True, env=HW_WINDOW)
+    game.run(seconds(45))
+    for _ in range(6):
+        game.run(60)
+        m = map_state(game)
+        assert m["dest"] == "game" and not m["overlay"], m
+
+
+def test_no_map_at_the_factory(game_factory):
+    """Q's Factory's menu draws no map: nothing of ours is laid over it, and nothing lingers."""
+    from rtharness.adventure import continue_to_factory
+    game = game_factory(checkpoint="adventure_first_save", settings=ENHANCED, render=True, env=HW_WINDOW)
+    continue_to_factory(game)
+    game.run(seconds(3))
+    for _ in range(4):
+        game.run(60)
+        m = map_state(game)
+        assert not m["overlay"], m

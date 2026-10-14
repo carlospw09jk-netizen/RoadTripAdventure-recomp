@@ -113,3 +113,34 @@ def test_texture_pack(game_factory, tmp_path):
     aniso = race_frame(game_factory, "texture_pack_aniso", {"RT_TEXTURE_PACK": str(pack), "RT_ANISOTROPY": "16"})
     diff = np.mean(np.any(aniso.array() != trilinear.array(), axis=2))
     assert diff > 0.01, f"16x anisotropic should change glancing replaced textures ({diff:.4f} of pixels)"
+
+
+def test_texture_pack_survives_full_queue(game_factory, tmp_path):
+    """#3: the texture worker's queue refused textures when it was full (a burst at a scene load, or
+    after an eviction) and the hardware GS never offered them again, so they stayed without their pack
+    image. With the queue cut to 3 jobs the pack must still show once the textures come round again."""
+    import os
+    import pytest
+    if os.environ.get("RT_GS_BACKEND") != "hw":
+        pytest.skip("hardware GS only (RT_GS_BACKEND=hw)")
+    dumps = tmp_path / "dumps"
+    original = race_frame(game_factory, "texture_dump_q", {"RT_TEXTURE_DUMP": str(dumps)})
+    deadline = time.time() + 10
+    while time.time() < deadline and not any(dumps.glob("*.png")):
+        time.sleep(0.2)
+    pack = tmp_path / "pack"
+    pack.mkdir()
+    for p in sorted(dumps.glob("*.png")):
+        img = Image.open(p).convert("RGBA")
+        if min(img.size) < 64:
+            continue
+        a = np.asarray(img).copy()
+        a[:, :, 0] //= 3
+        a[:, :, 1] //= 3
+        Image.fromarray(a, "RGBA").save(pack / p.name)
+    assert any(pack.glob("*.png"))
+    game = race(game_factory, "texture_pack_queue", {"RT_TEXTURE_PACK": str(pack), "RT_TEXTURE_JOBS_MAX": "3"})
+    shown = game.frame()
+    shown.image().save(game.work_dir / "race.png")
+    assert blueness(shown) > blueness(original) + 20, \
+        f"the pack should show with a full queue ({blueness(original):.1f} -> {blueness(shown):.1f})"

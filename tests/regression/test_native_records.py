@@ -13,7 +13,7 @@ import pytest
 from rtharness import goldens
 from test_native_draw import HW, SCENES, log_of, note
 
-CHAINS = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_CHAINS": "1"}
+CHAINS = {**HW, "RT_NATIVE_DRAW": "1", "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "1000", "RT_NATIVE_CHAINS": "1"}
 RECORDS = {**CHAINS, "RT_NATIVE_RECORDS": "1"}
 VERIFY = {**CHAINS, "RT_NATIVE_RECORDS_VERIFY": "1"}
 SCENE_NAMES = ["quick_race", "town", "course_0"]

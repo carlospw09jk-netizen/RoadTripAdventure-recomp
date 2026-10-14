@@ -71,12 +71,6 @@ stubs = [
   "scePadGetSlotMax@0x002746D8",
   "scePadGetModVersion@0x00274740",
   "scePadSetWarningLevel@0x002747A8",
-  "cos@0x00274810",
-  "__ieee754_rem_pio2f@0x002752C8",
-  "__kernel_cosf@0x002767C8",
-  "__kernel_sinf@0x002771E0",
-  "fabs@0x00277308",
-  "floor@0x00277340",
   "sceCdDelayThread@0x00277C70",
   "sceCdCallback@0x00277CD8",
   "sceCdInitEeCB@0x00277E90",
@@ -707,6 +701,12 @@ entry_points = [
   "codeptr_002848A0@0x002848A0",
   "codeptr_00286F20@0x00286F20",
   "codeptr_00286F40@0x00286F40",
+  "cos@0x00274810",
+  "floor@0x00277340",
+  "fabs@0x00277308",
+  "__ieee754_rem_pio2f@0x002752C8",
+  "__kernel_cosf@0x002767C8",
+  "__kernel_sinf@0x002771E0",
 ]
 skip = []
 output_worker_threads = 0

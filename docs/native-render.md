@@ -577,3 +577,28 @@ What the profile and the counters say, so the next step is aimed at the right th
 - The strips are built in the VU's float mode (`NativeRoundingScope`) and the backend is called outside it.
 
 Mac M3 Max, 60 Hz, hardware GS, [perf] busy %, town / race (the machine was shared, so ~±2): per-strip native before these steps 23 / 12 worker, 44.5 / 5.5 GS; now with `RT_NATIVE_RECORDS=1` worker 4 / 3, GS 20 / 8.5, process CPU 41 / 35.5; the old VU1 path in the same sessions worker 21 / 14, GS 16 / 6.5, CPU 51 / 40. The worker is far under the old path and the process uses less CPU; the GS thread is still ~4 points (town) and ~2 (race) over it. What is left of its expansion (~1.4 ms a frame for ~8,800 strips, ~150 ns each) is the strip classification (float, NEON; ~0.3 ms), the backend run (~0.35 ms), the material blocks (~0.15 ms) and exact clipping of the strips that cross the volume's edge.
+
+### Thor, native with records against the old path (14 Oct 2026, dev app, `scripts/android/measure.py`, 30 s, medians, ss 8)
+
+`RT_NATIVE_DRAW=1 RT_NATIVE_RECORDS=1` in env.txt for the runs only (removed afterwards; Android native stays off by default). Fuji City and Peach Town states, circling. GHz are clock-weighted per thread (the Worker is GifVif1Worker). "old" = `RT_NATIVE_DRAW=0`; "rec1" is the first build with records (the GS thread expanded every strip), "rec" the final one (strips built by the worker when it publishes the record, run submit, shared objects in the GPU table, motion in the run path).
+
+| scene | config | path | game / shown fps | Worker GHz | GS GHz | GPU busy % | late frames |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Fuji | 60 Hz | old | 60 / 60 | 1.25 | 0.83 | 44 | 2 |
+| Fuji | 60 Hz | rec1 | 59.9 / 60 | 0.24 | 1.40 | 51 | 25 |
+| Fuji | 60 Hz | rec | 60 / 60 | 0.98 | 0.86 | 51 | 10 |
+| Fuji | 120 FSR 1 | old | 59.9 / 120 | 1.22 | 1.00 | 80 | 2 |
+| Fuji | 120 FSR 1 | rec | 59.7 / 119 | 1.01 | 1.08 | 73 | 26 |
+| Fuji | 120 GSR 2 | old | 59.8 / 120 | 1.17 | 1.06 | 82 | 6 |
+| Fuji | 120 GSR 2 | rec | 59.8 / 47 | 0.86 | 1.24 | 65 | 44 |
+| Peach | 60 Hz | old | 60 / 60 | 1.56 | 1.15 | 39 | 2 |
+| Peach | 60 Hz | rec1 | 59.9 / 60 | 0.21 | 1.91 | 50 | 9 |
+| Peach | 60 Hz | rec | 60 / 60 | 1.14 | 1.30 | 50 | 6 |
+| Peach | 120 FSR 1 | old | 59.9 / 120 | 1.58 | 1.32 | 82 | 2 |
+| Peach | 120 FSR 1 | rec | 59.9 / 120 | 1.15 | 1.27 | 82 | 18 |
+| Peach | 120 GSR 2 | old | 60 / 120 | 1.53 | 1.32 | 85 | 4 |
+| Peach | 120 GSR 2 | rec | 55 / 55 | 1.01 | 1.12 | 64 | 12 |
+
+What the Thor profile (simpleperf on `GsThread`, `scripts`-less: `rtc/thor/prof_thor.sh`) said, in the order it was fixed: (1) rec1: 73% of the GS thread was `processNativeCallMarker` (strip classification 13%, shared_ptr atomics 16%, the clipped reference 10%, pool 9.5%); the expansion moved to the worker, draws borrow their model and the record, rejected strips are not built. (2) `prepareNative` filled a 624-byte table entry per draw into host-visible memory (14% of the GS thread): objects are shared now, 160 bytes a draw. (3) At 120 Hz with GSR 2 or TAA (motion vectors wanted) the run path was off (`WantsVertexSideband`), every strip went one by one with its CPU classification: the run path serves them now (matrices named once per call).
+
+Where it stands: with records the worker costs 20-35% less than the old path's VU1 work, the GS thread is at parity at 60 Hz in Fuji and 10-15% above it in Peach, and 120 Hz with FSR 1 holds 120 shown in both towns. 120 Hz with GSR 2 still loses frame generation (the frame-skip rule engages on late frames of 25-30 ms in which the GS thread works ~18 ms: the HUD phase, where `!plainPath1` makes every strip build its reference packet for the widescreen classifier, `nativeClippedReference` 7.5% of the GS thread, is the next thing to remove). Present dumps of native frames at 120 Hz FSR 1 show correct pictures (`v*_0.png` real frames; generated frames were not captured in the thinned set), and the late-frame log (`[late]`: EE blocked 20 ms of 26, GS 18) points at frame skip pausing generation, not a bad generated frame, as the flashing's cause.

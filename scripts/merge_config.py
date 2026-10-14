@@ -7,7 +7,11 @@ Rules:
   [mmio]: union, base wins.
   [[jump_tables.table]]: base tables replace analyzer tables with the same address.
   [patches]: taken from base.
+  [names] / [data_names]: our names for functions and data, from config/game_symbols.toml (the
+  recompiler writes them into the generated code's comments only).
 The result only contains addresses and names (no game code), so it is committed.
+
+`merge_config.py --names-only` refreshes just those two sections of config/roadtrip.toml (no ELF needed).
 """
 from __future__ import annotations
 
@@ -30,6 +34,19 @@ def _union(base: list[str], extra: list[str], drop: set[str]) -> list[str]:
     return out + extra
 
 
+def symbol_names(symbols_toml: Path) -> tuple[dict[str, str], dict[str, str]]:
+    """config/game_symbols.toml [functions] and [data] -> {"0x00206F28": "name"} tables."""
+    if not symbols_toml.exists():
+        return {}, {}
+    doc = tomllib.loads(symbols_toml.read_text())
+
+    def table(section: str, width: int) -> dict[str, str]:
+        rows = {int(k, 0): v["name"] for k, v in doc.get(section, {}).items() if isinstance(v, dict) and "name" in v}
+        return {f"0x{addr:0{width}X}": name for addr, name in sorted(rows.items())}
+
+    return table("functions", 8), table("data", 8)
+
+
 def merge(analyzer: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {k: v for k, v in analyzer.items() if k not in INFO_SECTIONS}
     gen = dict(out.get("general", {}))
@@ -49,6 +66,11 @@ def merge(analyzer: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
 
     if "patches" in base:
         out["patches"] = base["patches"]
+    functions, data = symbol_names(Path(__file__).resolve().parent.parent / "config" / "game_symbols.toml")
+    if functions:
+        out["names"] = functions
+    if data:
+        out["data_names"] = data
     return out
 
 
@@ -90,6 +112,20 @@ def dumps(doc: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def refresh_names(roadtrip_toml: Path) -> None:
+    """Rewrites the [names] / [data_names] sections of an existing roadtrip.toml."""
+    doc = tomllib.loads(roadtrip_toml.read_text())
+    functions, data = symbol_names(roadtrip_toml.resolve().parent / "game_symbols.toml")
+    doc.pop("names", None)
+    doc.pop("data_names", None)
+    if functions:
+        doc["names"] = functions
+    if data:
+        doc["data_names"] = data
+    roadtrip_toml.write_text(dumps(doc))
+    print(f"   {roadtrip_toml}: {len(functions)} function names, {len(data)} data names")
+
+
 def merge_config(analyzer_toml: Path, base_toml: Path, out_toml: Path, *, elf_path: Path,
                  output_dir: Path, extra_entry_points: list[str] | None = None) -> None:
     analyzer = tomllib.loads(analyzer_toml.read_text())
@@ -108,3 +144,12 @@ def merge_config(analyzer_toml: Path, base_toml: Path, out_toml: Path, *, elf_pa
     g = doc["general"]
     print(f"   {out_toml}: {len(g['stubs'])} stubs, {len(g['entry_points'])} entry points, "
           f"{len(g['skip'])} skips, {len(doc['mmio'])} mmio, {len(doc['jump_tables']['table'])} jump tables")
+
+
+if __name__ == "__main__":
+    import sys
+
+    if sys.argv[1:] == ["--names-only"]:
+        refresh_names(Path(__file__).resolve().parent.parent / "config" / "roadtrip.toml")
+    else:
+        sys.exit("usage: merge_config.py --names-only")

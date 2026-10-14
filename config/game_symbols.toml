@@ -72,6 +72,17 @@
 0x2729E0 = { name = "vu0CopyMatrix", note = "libvu0 (by shape)" }
 0x272A48 = { name = "vu0UnitMatrix", note = "libvu0 (by shape)" }
 
+# --- Maps (docs/native-map.md) ---
+0x21F920 = { name = "mapViewMatrix", note = "map view block (VU1 4..): offset x, y (+0x20/0x24), scale s (x) and s*DAT_332CAC (y) from (x, y, s)" }
+0x221258 = { name = "tileSlotLoaded", note = "1 if the map tile slot (0..3, id & 3) holds that tile id: quadrant byte 0x3335B8 >= 0" }
+0x221288 = { name = "tileSlotOrigin", note = "matrix of the tile slot's quadrant origin (tileQuadrantOrigins), 0 if the slot is empty" }
+0x242D20 = { name = "raceMapMarkers", note = "race map: arrow chain 0x290870 for player 1 (red, 0x2A4370) and 2 (teal, 0x2A4380), dot chain 0x290940 per rival (green 0.5 alpha, 0x2A4390)" }
+0x242FE8 = { name = "townMapTask", note = "town/field HUD map: bezel (0x249208), gs_map_draw_functions_town, player arrow, town cars, coins, clock strip" }
+0x243338 = { name = "mapDot", note = "object matrix (scale s, x, z) + dot chain 0x290940: one coin/pickup mark" }
+0x243398 = { name = "raceMapPickups", note = "race map: dots (yellow 0x2A43A0) at the pickup list 0x177EB40 (16 bytes each: x, ?, z, ?)" }
+0x241E90 = { name = "townMapCoins", note = "town map: a dot per coin of the table 0x2A3970 whose tile is loaded and not yet collected (FUN_0023DBF0 = collected)" }
+0x249208 = { name = "townMapBezel", note = "UiBatch sprites of the town map's frame (3 sprites, TBP 7828); the second tab's marker picture is drawn here" }
+
 [data]
 0x3356EC = { name = "vifPacketPtr", note = "write pointer of the VIF1 packet being built" }
 0x3356F0 = { name = "vifPacketSaved", note = "main-buffer pointer saved while the second buffer is built" }
@@ -102,3 +113,14 @@
 0x29D640 = { name = "todLight2Night", note = "second light set, night" }
 0x177F738 = { name = "fogFarParam", note = "written by updateTimeOfDayLight (with 0x177F73C) from the clock" }
 0x177F750 = { name = "fogColourRGBA", note = "fog colour written by updateTimeOfDayLight from the clock" }
+
+# --- Maps (docs/native-map.md) ---
+0x2A4050 = { name = "raceMapPlacements", note = "24 x {x, y, scale, rotation rad}: where each course's map model sits on the field (index = course byte)" }
+0x2A42C0 = { name = "townMapZoomTable", note = "2 x {x0, y0, scale, 0}: near (302, 89, 50) and far (202, 136, 25); mode byte 0x177A215" }
+0x2A42E0 = { name = "scissoredMapPlacements", note = "3 x {x, y, scale, rotation}: split-screen maps (442/127/-188, 1910, 105)" }
+0x2A4330 = { name = "mapColourSets", note = "8 x vec4: white, grey (town day), race blue (0.2,0.2,0.6,0.7), zero, red, teal, green half, yellow" }
+0x2A43B0 = { name = "mapStatePacket", note = "3 qw sent by vifDirect: A+D TEST_2 = 0x3380B, ALPHA_2 = 0x8000000044 (every map draw starts with it)" }
+0x2A43E0 = { name = "mapProjectionOffset", note = "vec4 (-800, -200, -800, 1) multiplied into the map view" }
+0x2A43F0 = { name = "mapScissorTown", note = "SCISSOR_2 x 45..158 y 156..207 (+0x20: 36..126, +0x40: 48..208 x 68..200)" }
+0x290870 = { name = "chainMapArrow", note = "VIF chain in .vutext: the map's heading arrow (entry5)" }
+0x290940 = { name = "chainMapDot", note = "VIF chain in .vutext: the map's dot (entry5)" }

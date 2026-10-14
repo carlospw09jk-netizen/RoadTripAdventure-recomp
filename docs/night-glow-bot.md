@@ -52,11 +52,11 @@ No game routine needs tracing: nothing in contact words, wall scrapes or air fla
 Shortcuts (COVERAGE.md): none beyond the existing bot; the races are driven for real. The Night Glow bot
 settings are tuned to this corner.
 
-Result: all 26 `test_adventure_races` pass on the integration build (pgs, goldens as committed; 12.7 min).
-The first version of the lost detection (12 units) broke Snow Mountain B, which passed before; 25 units does not.
-Not run: the other users of `Driver` (WGP, President, Quick Race, 2 Player), which the lost detection could in
-principle touch (only when more than 25 units from the line for 5 s with no gain).
+The lost detection and zone learning are opt-in (`DriverConfig.learn`, set only for the `careful` races):
+enabled for every race they changed Lagoon and Temple WGP stages (golden mismatch), so every other
+user of `Driver` behaves exactly as before.
 
-Probes (diagnostic, skipped unless `RT_NG_PROBE=1`): `test_night_glow_probe.py` (log the car's state and
-contact words around trouble; `RT_NG_RACE`, `RT_NG_CFG` for DriverConfig overrides),
-`test_night_glow_escape.py` (`test_escape`, `test_shots`, `test_accel`).
+Result: all 26 `test_adventure_races` pass (pgs, 12.7 min; first version). With `learn` opt-in: Night Glow A/B,
+Snow Mountain B, all 7 WGP stages and the President race pass. The Night Glow start pictures are compared at 15 s
+on the grid (before the bot drives, so they do not depend on its speed) against goldens regenerated in 59ea667
+(`race_Sandpolis_Night_Glow_Raceway_A/B` entries changed there); no golden changed here.

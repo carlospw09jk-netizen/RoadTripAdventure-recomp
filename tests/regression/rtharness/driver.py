@@ -58,6 +58,7 @@ class DriverConfig:
     stanley_gain: float = 2.5
     preview_steer: float = 12.0  # line direction taken this many vblanks ahead at our speed
     nudge_distance: float = 20.0
+    learn: bool = False           # back out of lost stretches and slow down where we came to grief
     lost_distance: float = 25.0   # farther than this from the line, and not getting closer ...
     lost_vblanks: int = 300       # ... for this long (the car crawls along a wall, which the
                                   # "no movement" test never sees) -> back out like when stuck
@@ -395,7 +396,7 @@ class Driver:
         """We came to grief here (stuck, or lost beside the way on): take the stretch of line up to
         this point slower next time round, and slower still each time it happens again (a corner
         taken too fast leaves the car wedged against the wall beside it)."""
-        if not self.loop_closed:
+        if not self.config.learn or not self.loop_closed:
             return
         n = len(self.trail)
         for zone in self.slow_zones:
@@ -409,7 +410,7 @@ class Driver:
         """Off the line for a long time without getting closer to it. A corner missed by a few
         units leaves the car crawling along a wall beside the way on (it moves, so it is never
         "stuck"), and the line's nearest point keeps running ahead of it."""
-        if not self.loop_closed or self.line_distance <= self.config.lost_distance:
+        if not self.config.learn or not self.loop_closed or self.line_distance <= self.config.lost_distance:
             self.lost_since = None
             return False
         if self.lost_since is None or self.line_distance < self.lost_best - 3.0:

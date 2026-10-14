@@ -486,3 +486,19 @@ Town drive the draws come from `drawCar` (cars, 0x221f2c) and `drawCoins` (0x241
 
 Switches: `RT_NATIVE_PATH=vertex` draws each strip with native.vert (one call each; the old design), `RT_NATIVE_MODEL_GPU=0` keeps the cache's blocks out of
 the arena, `RT_NATIVE_ONLY=<programs>` (worker) and `RT_NATIVE_DRAW_ENTRIES` (GS thread, the rest built as packets) for A/B.
+
+### What the native path still takes from the packet GS (to cut when the old renderers leave the app)
+
+- **GS state** arrives as GIF packets through `GS::processGIFPacket` / `writeRegisterUnlocked`: every batch's header (TEX0, CLAMP, ALPHA, TEST, ... from TOP + 402)
+  is submitted as a PATH1 packet, the 2D/PATH2/PATH3 traffic too, and `processNativeMarker` writes PRIM from the draw's tag. The draw's state
+  (`buildDrawBatch`, `m_drawStateSerial`), the texture (`resolveTexture`: GS memory reads, CLUT, paletted decode, texture packs) and the frame/Z targets all
+  come from the frontend's register model. A native renderer wants a draw record that carries its material (TEX0/CLAMP/ALPHA/TEST/FRAME/ZBUF) itself.
+- **Ordering** with the rest of the GS traffic is the marker packet in the PATH1 stream (one 32-byte packet per draw plus the header packet), and the
+  VU1 microprograms still run for the setup entries (0, 1, 7: camera and object matrices into VU memory, which `buildNativeDraw` reads back as
+  `state.vf` / VU data) and for everything the native path declines (`RT_NATIVE_ONLY`, a bad tag, a deopt).
+- **Classifier and layout**: `WideLayout` (HUD vs 3D verdicts, `vertexClass`, `xScale`/`xBias`), `MotionTracker` (`curC`/`prevC`) and the UI mask / map layer's
+  CPU triangles (`nativeScreenTriangles`, built from `nativeReference`'s packet) are the frontend's; the declined cases fall back to
+  `nativeReference` + `processGIFPacket`.
+- **The CPU's share**: clipped programs (3, 4, 6) classify strips on the VIF1 worker (`classifyStrip`) and make the clipped polygons with vu1hle
+  (`nativeClippedReference`), then draw them as GIF packets.
+- **The backend**: `HwBackend::SubmitNative` still goes through `openFor` / `sameDraw` (the packet path's batch merging) and `Batch`es recorded by `record()`.

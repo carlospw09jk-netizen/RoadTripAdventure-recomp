@@ -58,6 +58,9 @@ class DriverConfig:
     stanley_gain: float = 2.5
     preview_steer: float = 12.0  # line direction taken this many vblanks ahead at our speed
     nudge_distance: float = 20.0
+    lost_distance: float = 25.0   # farther than this from the line, and not getting closer ...
+    lost_vblanks: int = 300       # ... for this long (the car crawls along a wall, which the
+                                  # "no movement" test never sees) -> back out like when stuck
 
 
 @dataclass
@@ -80,6 +83,9 @@ class Driver:
     breadcrumbs: list = field(default_factory=list)  # our recent positions, for backing out
     backtracks: int = 0
     last_stuck: tuple | None = None
+    lost_since: int | None = None
+    slow_zones: list = field(default_factory=list)  # [first, last, factor]: line points we came to grief at
+    lost_best: float = 0.0
     stuck_streak: int = 0
     nudges: int = 0
     loop_closed: bool = False  # the trail is one full lap; follow it round and round
@@ -266,9 +272,16 @@ class Driver:
         elsewhere flat out."""
         end = self._path_point(self.index, max(20.0, speed * self.config.preview_vblanks))
         slowest = min((self._leader_speed(i) for i in range(self.index, max(self.index + 1, end))), default=9.0)
-        if self.top_speed and slowest > self.config.braking_zone * self.top_speed:
-            return 9.0
-        return slowest * self.config.leader_speed_factor
+        target = 9.0
+        if not (self.top_speed and slowest > self.config.braking_zone * self.top_speed):
+            target = slowest * self.config.leader_speed_factor
+        n = max(1, len(self.trail))
+        for first, last, factor in self.slow_zones:
+            # Does the stretch we will reach touch the zone (the line is a loop)?
+            if any((j - first) % n <= last - first for j in range(self.index, max(self.index + 1, end) + 1, 3)):
+                floor = slowest if slowest < 9.0 else 0.8
+                target = min(target, max(0.2, floor * self.config.leader_speed_factor * factor))
+        return target
 
     def _stanley_target(self, me, speed: float):
         """Stanley-style steering expressed as a target point: follow the line's direction at a
@@ -334,6 +347,7 @@ class Driver:
                 self.backtracks += 1
                 self.backtracking_until = now + self.config.backtrack_vblanks
                 self.off_line_since = None
+                self._learn_zone()
         else:
             self.off_line_since = None
         return False
@@ -362,6 +376,46 @@ class Driver:
         self.stuck_streak = 0
         self.reversing_until = 0
         self.history.clear()
+
+    def _recover(self, me, now):
+        """Stuck: back out (further each time at the same spot; see `reversing_until`)."""
+        self.recoveries += 1
+        # Repeated failures at the same spot: back out further each time.
+        again = self.last_stuck is not None and math.dist(self.last_stuck, me) < 15.0
+        self.stuck_streak = self.stuck_streak + 1 if again else 1
+        self.last_stuck = me
+        self.reversing_until = now + self.config.reverse_vblanks * min(4, self.stuck_streak)
+        if self.stuck_streak >= self.config.nudge_after and len(self.trail) > 20:
+            self._nudge_forward()
+        self.history.clear()
+        self.lost_since = None
+        self._learn_zone()
+
+    def _learn_zone(self):
+        """We came to grief here (stuck, or lost beside the way on): take the stretch of line up to
+        this point slower next time round, and slower still each time it happens again (a corner
+        taken too fast leaves the car wedged against the wall beside it)."""
+        if not self.loop_closed:
+            return
+        n = len(self.trail)
+        for zone in self.slow_zones:
+            if (self.index - zone[0] + 20) % n <= zone[1] - zone[0] + 40:
+                zone[0] = max(zone[0] - 20, zone[1] - 150)
+                zone[2] = max(0.45, zone[2] * 0.75)
+                return
+        self.slow_zones.append([self.index - 45, self.index + 5, 0.7])
+
+    def _lost(self, now) -> bool:
+        """Off the line for a long time without getting closer to it. A corner missed by a few
+        units leaves the car crawling along a wall beside the way on (it moves, so it is never
+        "stuck"), and the line's nearest point keeps running ahead of it."""
+        if not self.loop_closed or self.line_distance <= self.config.lost_distance:
+            self.lost_since = None
+            return False
+        if self.lost_since is None or self.line_distance < self.lost_best - 3.0:
+            self.lost_since, self.lost_best = now, self.line_distance
+            return False
+        return now - self.lost_since > self.config.lost_vblanks
 
     def step(self):
         """One control update: read state, set the pad, run `step` vblanks."""
@@ -416,15 +470,15 @@ class Driver:
         span = now - self.history[0][0]
         if (len(self.trail) > 10 and now - self.drive_start > self.config.start_grace and span >= self.config.stuck_vblanks - self.config.step
                 and math.dist(self.history[0][1], me) < 1.0):
-            self.recoveries += 1
-            # Repeated failures at the same spot: back out further each time.
-            again = self.last_stuck is not None and math.dist(self.last_stuck, me) < 15.0
-            self.stuck_streak = self.stuck_streak + 1 if again else 1
-            self.last_stuck = me
-            self.reversing_until = now + self.config.reverse_vblanks * min(4, self.stuck_streak)
-            if self.stuck_streak >= self.config.nudge_after and len(self.trail) > 20:
-                self._nudge_forward()
+            self._recover(me, now)
+        elif self._lost(now):
+            # Lost beside the way on: back up along our own path to the line, as for a wrong branch.
+            self.backtracks += 1
+            self.backtracking_until = now + self.config.backtrack_vblanks
+            self.off_line_since = None
+            self.lost_since = None
             self.history.clear()
+            self._learn_zone()
         self.heading = heading
         self.last_pos = me
         buttons = ["cross"]

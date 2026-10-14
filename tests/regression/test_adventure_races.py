@@ -41,6 +41,8 @@ def test_adventure_race(game_factory, golden, golden_audio, town, index, name):
         golden_audio(key, game.audio())
 
     config = DriverConfig(backtrack=name in GAME_MAP["bot"]["backtrack"])
+    if name in GAME_MAP["bot"]["careful"]:
+        config.leader_speed_factor, config.min_lookahead = 0.8, 4.0
     place = drive_race(game, config=config, at={15: check_start})
     after = results(game)
     changed = [i for i in range(len(after)) if after[i] != before[i]]

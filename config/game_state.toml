@@ -85,6 +85,10 @@ not_yet_open = ["Tin Raceway"]
 # Races whose line has a fork the driving bot can take wrongly: let it back out of dead ends.
 # (Backing up hurts on wide tracks, so it is off elsewhere.)
 backtrack = ["Night Glow Raceway B"]
+# Races with a tight corner beside walls that the bot clips at its normal pace (the brick corner at
+# Night Glow's first right-hander leaves the car in a dead-end side street): it corners at 0.8 of the
+# leader's speed and aims closer along the line.
+careful = ["Night Glow Raceway A", "Night Glow Raceway B"]
 # World Grand Prix stages where following the pole car's line works better than the nearest car's.
 wgp_follow_far = ["Night Glow Raceway"]
 

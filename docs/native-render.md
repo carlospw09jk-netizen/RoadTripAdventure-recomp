@@ -538,3 +538,20 @@ the arena, `RT_NATIVE_ONLY=<programs>` (worker) and `RT_NATIVE_DRAW_ENTRIES` (GS
 - **The CPU's share**: clipped programs (3, 4, 6) classify strips on the VIF1 worker (`classifyStrip`) and make the clipped polygons with vu1hle
   (`nativeClippedReference`), then draw them as GIF packets.
 - **The backend**: `HwBackend::SubmitNative` still goes through `openFor` / `sameDraw` (the packet path's batch merging) and `Batch`es recorded by `record()`.
+
+### Model chains taken whole, marker runs (RT_NATIVE_CHAINS=1, opt-in)
+
+The VIF1 worker can recognise a model chain's payload in the stream (the DMA chain walk records each payload's guest address and length, `srcMap`;
+`nativeChainFind` checks it byte for byte against its parsed copy) and draw its batches from the parse: nothing is unpacked into VU memory, the tag, the
+vertex block (kept as `NativeModel`, also the GPU arena's block), the material (as the GIF packet) and the bounding box come from the parse, a strip whose
+box is inside the clip volume or wholly beyond one plane is classified from the box (`classifyBox`), anything else goes through `classifyStrip` and the
+reference as before, and a run that needs the microprogram gets its UNPACKs written into VU memory first (`nativeChainMaterialize`). Markers go out as one
+packet per run of consecutive draws (`queueNativeMarker`, at most 48; the frontend loops `processNativeMarker` over the run).
+Measured on the Mac (town, `RT_PERF_LOG`): model chains on or off changes the worker's busy time by under 1 point, because **every model chain the game
+calls is exactly one batch (one strip)**: there is nothing to amortise across a chain, and the per-strip costs (the pooled draw, the constants, the
+publish, the GS thread's `processNativeMarker` / `openFor` / `SubmitNative`) are the same either way. The hook that would remove them is above the
+chain: the renderer functions (or `vifCallModel` plus the object-matrix UNPACK) emitting one record per object and the GS taking runs of draws as one
+`SubmitNativeRun`; a GPU-driven per-object table with indirect draws is the design that can get a strip under ~0.2 us.
+Mac town at 60 fps (`VU1` / `GS` busy %): old path 19.5 / 15.5, native 25.8 / 44.5; race 10.8 / 5.5 against 13.0 / 7.5. The GS thread's extra is mostly the
+per-draw frontend (classifier, `nativeScreenTriangles` for HUD draws), the device-lock waits in `openFor` (texture creation while the presenter holds it)
+and recording; the worker's: the clipped-polygon reference (~17%) and `classifyStrip` (~7%).

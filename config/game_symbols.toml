@@ -54,10 +54,6 @@
 0x223588 = { name = "drawCarShadow", note = "a car's shadow quad: colours (VU 0x18), object matrix, ELF chain 0x290570 (entry5); guess from its chain" }
 0x2238A0 = { name = "drawCarEffectA", note = "a car effect through ELF chain 0x290670 (called twice); sub-renderer of drawCarEffects, guess" }
 0x223B30 = { name = "drawCarEffectB", note = "a car effect through ELF chain 0x290770 (called twice); sub-renderer of drawCarEffects, guess" }
-0x242D20 = { name = "drawMapMarkerA", note = "minimap markers through ELF chains 0x290870 / 0x290940; guess" }
-0x242FE8 = { name = "drawMapMarkerB", note = "minimap marker through ELF chains 0x290870 / 0x290940; guess" }
-0x243338 = { name = "drawMapMarkerC", note = "minimap marker through ELF chain 0x290940; guess" }
-0x243398 = { name = "drawMapMarkerD", note = "minimap marker through ELF chain 0x290940; guess" }
 0x244D60 = { name = "drawCarouselCells", note = "vifCallModel of one cell chain (0x177AB24 table); the carousel's course tiles, guess" }
 0x244F60 = { name = "drawCarouselCar", note = "car models of the carousel / select screens (0x177F478 table, carModels); guess" }
 0x22CC38 = { name = "drawModelAt177F358", note = "calls the model at 0x177F358 (+0x10); unknown scene" }
@@ -68,11 +64,27 @@
 0x225988 = { name = "updateTimeOfDayLight", note = "weights at 0x177F720 and fog from the clock (vblanks since midnight)" }
 0x226248 = { name = "setFixedLight", note = "time-of-day weights/fog from the table at 0x29EA10" }
 
-# --- Loading ---
+# --- Loading & texture copies (docs/native-textures.md) ---
 0x20BAC8 = { name = "loadFieldTile", note = "state machine: reads a FLD/COURSE/ACTION file into 0x707B80 + slot * 0x3A8000" }
 0x20C7B8 = { name = "loadCarModel", note = "reads a CAR file into a slot; 6 model pointers to 0x177F310 + slot * 0x18" }
 0x20C9D0 = { name = "loadCarModelAt", note = "car file into 0x3FBB80 + n * 0x34000; textures rebased to TBP 0x243E + n * 0x44" }
 0x207B50 = { name = "sendTexturePackets", note = "sends a file's GS upload chain (CNT tags up to END)" }
+0x20D120 = { name = "loadStep", note = "the scene load state machine: request word kind = (w >> 16) & 0xF, index = w & 0xFF; state at 0x3356C0; picks the loader and the TBP rebase" }
+0x20DC50 = { name = "loadRequestTask", note = "task: starts a load (busy 0x333370, request word 0x333374); sets drive flag 0x400000 (the loading blur) unless bit 0x100000" }
+0x20DDE0 = { name = "loadFontTextures", note = "reads SYS table entry 0 (FONT/FONTE.GSL) and sends its chain with TBP + 0x1A40" }
+0x20AEF0 = { name = "loadCarPartsSet", note = "SYS entries 1..4: EFFECT.GSL (absolute 16169..), CARS/PARTS (TBP + 0x1BC2), TIRE (+ 0x1C44), WHEEL (models only)" }
+0x20B348 = { name = "loadPoseSet", note = "SYS entry 9 (POSE.GSL) at TBP + 0x1D8E; model blob to 0x3FA780 (likely)" }
+0x20B5E8 = { name = "loadShopSet", note = "SHOP/Tnn (table 0x29B29C) and SYS entry 11; rebases 0x1F2E, 0x1CC6, 0x285E, 0x34BE (shop interiors: T8 640x384)" }
+0x20C188 = { name = "loadCourseTile", note = "COURSE/ACTION file (table 0x29BE50), like loadFieldTile; each misc model's chain rebased to TBP 0x2B26 + i * 0x44" }
+0x20AD18 = { name = "copyCarModel", note = "car slot a -> b: memmove of the model blob and a GS local-to-local copy (T8 128x128 + 16x16 CLUT) through the template 0x29AD90" }
+0x20E1F0 = { name = "cdReadEntry", note = "starts sceCdRead of a {mode, lsn, sectors} table entry to dest (async; 0x20E440 polls)" }
+0x20E250 = { name = "cdReadEntryPart", note = "as cdReadEntry for a byte range of the entry (offset, size)" }
+0x20E318 = { name = "cdReadEntryWait", note = "cdReadEntry that waits (sceGsSyncV loop) until the read is done" }
+0x20E440 = { name = "cdReadPoll", note = "polls the pending sceCdRead; 0 when done" }
+0x20DCD8 = { name = "debugScreenRead", note = "sceGsExecStoreImage of a whole frame buffer (debug 'Screen Save'; no live callers)" }
+0x20E500 = { name = "debugScreenSave", note = "writes the capture to a file (debug; no callers)" }
+0x23E140 = { name = "texAnimCopyA", note = "per-frame GS local-to-local copies (template 0x2A3490, 3 copies: scrolling T4 windows); first of 26 sites, see docs/native-textures.md" }
+0x262678 = { name = "texAnimCopyB", note = "same with the template 0x2D9F50 (3 copies: NLOOP 0xC)" }
 
 # --- Misc ---
 0x2006F0 = { name = "fatal", note = "prints a message and stops (assert)" }
@@ -93,6 +105,111 @@
 0x241E90 = { name = "townMapCoins", note = "town map: a dot per coin of the table 0x2A3970 whose tile is loaded and not yet collected (FUN_0023DBF0 = collected)" }
 0x249208 = { name = "townMapBezel", note = "UiBatch sprites of the town map's frame (3 sprites, TBP 7828); the second tab's marker picture is drawn here" }
 
+# --- 2D survey (docs/native-2d.md) ---
+0x2003B8 = { name = "gameMainLoop", note = "endless frame loop: vifBeginPacket(0), tasks, uiBatchFlush, frameBlend, kick, swap buffers" }
+0x2000C8 = { name = "gsInitDisplay", note = "sceGsResetGraph(0,1,2,1) + two sceGsSetDefDBuffDc 640x224 CT32, Z24 (DAT_00333288 = 0)" }
+0x2008C0 = { name = "uiDrawSmallText", note = "10x20 small font (atlas v = 0xB4 + 20 * row)" }
+0x200A60 = { name = "uiDrawPadGlyph", note = "PS2 pad icons by pad mask: 1/2/4/8 = L2 R2 L1 R1 (24x12), 0x10/0x20/0x40/0x80 = triangle circle cross square (20x20)" }
+0x200DC0 = { name = "uiDrawIcon3", note = "three small icons (palette banks 2, 2, 5); guess" }
+0x200FE8 = { name = "uiKanaGlyphUV", note = "Shift-JIS below 0x889F to atlas (u, v) of a 20x20 glyph" }
+0x2012F8 = { name = "uiKanjiGlyphUV", note = "Shift-JIS from 0x889F to atlas (u, v) of a 20x20 glyph" }
+0x201420 = { name = "uiDrawGlyphScaled", note = "one character scaled (sprite built in three parts)" }
+0x2017B0 = { name = "uiDrawGlyph", note = "one character (x, y2, shade, str): Latin 16x24 cells, Shift-JIS 20x20, returns next x" }
+0x201C80 = { name = "uiDrawTextRight", note = "right-aligned string" }
+0x201E48 = { name = "uiDrawNumber16", note = "16x20 digits, right aligned at x" }
+0x201FD0 = { name = "uiDrawNumber16Y2", note = "uiDrawNumber16 with y - 2" }
+0x202150 = { name = "uiDrawNumber10", note = "10x20 digits with thousands commas" }
+0x202350 = { name = "uiDrawPanel9", note = "window frame: 3x3 sprites (x, y, w, h, style = palette bank 7/0xE/8)" }
+0x2028B0 = { name = "uiDrawDialogueFrameA", note = "big message window frame, upper half; only the dialogue task 0x23B168 calls it" }
+0x202B70 = { name = "uiDrawDialogueFrameB", note = "big message window frame, lower half" }
+0x203098 = { name = "uiDrawBar3", note = "3-slice horizontal bar (bank 0xB)" }
+0x203240 = { name = "uiDrawHintBar", note = "bottom hint line in the language of DAT_00333284 plus a panel" }
+0x203810 = { name = "uiBatchFlush", note = "appends TEXA, patches NLOOP, vifDirect(base, count + 7), switches UiBatch buffer" }
+0x2038F8 = { name = "uiBatchInit", note = "both UiBatch buffers: header with TEX0 0x2013780E65321A40 (HUD atlas 0x1A40, CLUT 0x1BC0)" }
+0x203990 = { name = "uiSetTexa", note = "TEXA entry: TA0 = x, AEM 1, TA1 = x / 2" }
+0x2039E8 = { name = "uiSetPaletteBank", note = "TEX2_1 entry: PSMT4, CBP 0x1BC0, CT16, CSA = bank, CLD 0 (cached in uiBatchPalette)" }
+0x203A50 = { name = "uiDebugText8", note = "8x8 debug font (21 callers, debug overlays)" }
+0x203B78 = { name = "uiDrawTime", note = "h:mm:ss.cc from frames (0x7FFFFFFF = dashes)" }
+0x203CD0 = { name = "uiDrawArrow", note = "small arrow icon (bank 0xD); guess" }
+0x203D90 = { name = "uiDrawBarWithArrow", note = "uiDrawBar3 plus uiDrawArrow; guess" }
+0x203E70 = { name = "uiDrawIcon20", note = "20x20 icon n of the atlas row v = 0xB4" }
+0x203F40 = { name = "uiTextWidth", note = "width of a string from uiGlyphWidths (Japanese 20)" }
+0x203FC8 = { name = "uiDrawText", note = "string at (x, y2) with palette bank" }
+0x204100 = { name = "uiDrawTextRaw", note = "string at (x, y) with palette bank" }
+0x204230 = { name = "uiDrawTextShade", note = "string with a shade argument, no palette write" }
+0x204310 = { name = "uiDrawTextCell", note = "string on the 20x12 cell grid" }
+0x204460 = { name = "uiDrawNumberAuto", note = "uiDrawNumber10 sized by the digit count" }
+0x204568 = { name = "uiDrawPanelCells", note = "uiDrawPanel9 from cell coordinates" }
+0x2045D0 = { name = "uiDrawTextScaled", note = "string with uiDrawGlyphScaled" }
+0x2046C0 = { name = "uiDrawNumberFixed", note = "16x20 digits, fixed digit count" }
+0x205350 = { name = "uiMenuWindow", note = "generic list window widget (panel, rows, scroll bar, cursor, open/close fade); 10 callers" }
+0x2058A8 = { name = "uiMenuAddItem", note = "guess: appends a row to a uiMenuWindow" }
+0x205C20 = { name = "uiMenuCreate", note = "guess: allocates a uiMenuWindow" }
+0x205C08 = { name = "uiMenuRun", note = "guess: calls uiMenuWindow" }
+0x2063C8 = { name = "uiSpriteWrite", note = "5 A+D entries of one sprite: CLAMP_1 region = atlas cell, UV, XYZ2, UV, XYZ2 (Z 0xFFFFFE)" }
+0x206040 = { name = "uiSpriteWriteWrap", note = "uiSpriteWrite with REPEAT / REGION_REPEAT wrap modes" }
+0x206650 = { name = "uiSpriteWriteZ", note = "uiSpriteWrite with an explicit Z" }
+0x2068D0 = { name = "uiSpriteWriteWH", note = "uiSpriteWrite with separate source and destination size" }
+0x206B00 = { name = "uiSpriteWriteFull", note = "uiSpriteWrite for pictures" }
+0x2075F0 = { name = "uiSetSpriteXY", note = "writes only the two XYZ2 positions of an entry" }
+0x2076B8 = { name = "uiSetSpriteUV", note = "writes only the two UV values of an entry" }
+0x2078A0 = { name = "uiSetSpriteClamp", note = "writes only the CLAMP_1 entry" }
+0x207998 = { name = "uiHideSprite", note = "turns the two XYZ2 selectors into XYZ3 (no kick)" }
+0x2079A8 = { name = "uiMoveSprite", note = "moves entry n of a retained batch" }
+0x207A28 = { name = "uiSetQuadXY", note = "writes the four packed corners of a gifQuadTag quad" }
+0x207A88 = { name = "uiFlatVertexWrite", note = "flat colour vertex pair {RGBAQ, XYZ2}" }
+0x207D80 = { name = "gifChainEndTag", note = "one END DMA tag with qwc, for sendTexturePackets" }
+0x207D98 = { name = "eeQuadBuild", note = "EE-side transformed quad (shop scene) into a packed ST/RGBAQ/XYZF2 strip" }
+0x2080F8 = { name = "uiFade", note = "full-screen flat quad with an RGBA colour (alpha = strength); 51 callers" }
+0x208120 = { name = "frameBlend", note = "DIRECT packet (0x29A930 + variant * 0x90): the frame buffer over itself, FIX 0x20 or 0x40 (loading blur)" }
+0x208270 = { name = "fadeOutTask", note = "task: fade to black over 0x40 / 0x20 ticks" }
+0x2082D8 = { name = "fadeInTask", note = "task: fade in" }
+0x208358 = { name = "flashTask", note = "task: white flash" }
+0x208A88 = { name = "titlePressStart", note = "title picture scene (PRESS START BUTTON)" }
+0x209520 = { name = "titleNewGameContinue", note = "title menu scene (New Game / Continue)" }
+0x20DF50 = { name = "getExtraPacketArea", note = "returns 0x15A7B80 (fatal above 0x180000 bytes)" }
+0x21D470 = { name = "vu0TransformVerts", note = "VU0 macro code: project and clip vertices into GS packed form; guess" }
+0x21D718 = { name = "gifBeginSpriteBatch", note = "6 qw header: TEST_1 0x5001B, ALPHA_1 0x44, TEX1_1 0x60, TEX0_1 = arg, CLAMP_1 5" }
+0x21D788 = { name = "gifSetTexRegs", note = "2 qw REGLIST TEX0_1 + CLAMP_1 (arena patches the second to TEX0_1)" }
+0x21D7B0 = { name = "gifSetTex0Tex2", note = "A+D pair TEX0_1 + TEX2_1" }
+0x21D9B0 = { name = "eeQuadTransform", note = "transforms a quad with 21D470" }
+0x21DAB8 = { name = "gifTexQuadTag", note = "PACKED ST/RGBAQ/XYZF2 strip tag, 4 loops (tag 0x29CC20)" }
+0x21DAE8 = { name = "gifSetSpriteCount", note = "sprite data tag (0x29CBE0) with NLOOP = n * 5" }
+0x21DB20 = { name = "gifQuadTag", note = "PACKED quad strip tag 0x29CBF0 (CLAMP_1, 4 x UV + XYZ2)" }
+0x21DB48 = { name = "gifAdPair", note = "one A+D write (tag 0x29CBC0): data, register" }
+0x21DBE0 = { name = "gifFlatRectTag", note = "linestrip A+D tag 0x29CC60 (unused path)" }
+0x22C3A8 = { name = "getShopPacketArea", note = "returns 0x1785FF0 (fatal above 0x1000 qw)" }
+0x22C648 = { name = "stampBookBuild", note = "guess: builds the stamp book packet (13 stamp sprites, hidden unless collected)" }
+0x22AEB0 = { name = "shopScene", note = "shop room scene: GetShopPacketArea 0x37 qw backdrop + cars" }
+0x22DDD0 = { name = "raceHudTask", note = "race HUD task: allocates 0x8CB0 B from the extra buffer, spawns minimap and music; inferred" }
+0x2321B8 = { name = "raceHudInit", note = "initialises the HUD element states (one or two players)" }
+0x232C18 = { name = "raceHudUpdate", note = "per-player HUD update" }
+0x233860 = { name = "raceHudDraw", note = "rebuilds the HUD arena from its element builders and submits it" }
+0x22EE70 = { name = "raceHudElementA", note = "HUD element builder (arena records); inferred" }
+0x22F338 = { name = "raceHudItemPanel", note = "HUD item panel: 8 slots" }
+0x22F750 = { name = "raceHudElementC", note = "HUD element builder" }
+0x22FE50 = { name = "raceHudElementD", note = "HUD element builder" }
+0x230520 = { name = "raceHudElementE", note = "HUD element builder" }
+0x230C20 = { name = "raceHudElementF", note = "HUD element builder" }
+0x231208 = { name = "raceHudElementG", note = "HUD element builder" }
+0x2318B0 = { name = "raceHudElementH", note = "HUD element builder" }
+0x231C90 = { name = "raceHudElementI", note = "HUD element builder" }
+0x231F28 = { name = "raceHudElementJ", note = "HUD element builder" }
+0x23B168 = { name = "dialogueTask", note = "message window task ('next msg #%d')" }
+0x246250 = { name = "shopMenuScene", note = "shop buy/sell scene (strings Selling, Buying)" }
+0x24EB10 = { name = "uiArenaRotQuads", note = "rotated quads as 4-vertex strips (VU0 matrix)" }
+0x24EE30 = { name = "uiArenaRotQuads2", note = "second rotated quad emitter" }
+0x24F148 = { name = "uiArenaFlatRects", note = "flat colour vertices into an arena (linestrip tag, unused path)" }
+0x24F558 = { name = "uiArenaInit", note = "arena limit = size - 0x10, used = 0 (limit 0 = hidden when arena[2] != 0)" }
+0x24F578 = { name = "uiArenaSubmit", note = "vifDirect(arena + 0x10, used >> 4)" }
+0x24F5C8 = { name = "uiArenaBeginBatch", note = "reserves 0x60 and writes gifBeginSpriteBatch with TEX0 from a texture table" }
+0x24F640 = { name = "uiArenaSetTexture", note = "reserves 0x20: TEX0 + TEX0 (CLD 0, CSA = bank) from a texture table" }
+0x24F6D0 = { name = "uiArenaSetColour", note = "reserves 0x20: RGBAQ A+D" }
+0x24F728 = { name = "uiArenaDataTag", note = "reserves 0x10: sprite data tag for n sprites" }
+0x24F7C8 = { name = "uiArenaSprites", note = "n sprites from 32-byte records, Z = 0xFFFFFF - (z + base)" }
+0x24F928 = { name = "uiArenaSpritesWrap", note = "uiArenaSprites with wrap modes, 40-byte records" }
+0x26C588 = { name = "creditsScene", note = "guess: ending credits packet (vifDirect 0x1772670, 0x9D qw)" }
+
 [data]
 0x3356EC = { name = "vifPacketPtr", note = "write pointer of the VIF1 packet being built" }
 0x3356F0 = { name = "vifPacketSaved", note = "main-buffer pointer saved while the second buffer is built" }
@@ -112,8 +229,6 @@
 0x298A50 = { name = "chainSkyLayerB", note = "VIF chain in .vutext (entry6)" }
 0x290670 = { name = "chainCarEffectA", note = "VIF chain in .vutext, drawn by drawCarEffectA" }
 0x290770 = { name = "chainCarEffectB", note = "VIF chain in .vutext, drawn by drawCarEffectB" }
-0x290870 = { name = "chainMapMarkerA", note = "VIF chain in .vutext (minimap markers)" }
-0x290940 = { name = "chainMapMarkerB", note = "VIF chain in .vutext (minimap markers)" }
 0x299430 = { name = "chainArcRibbon", note = "VIF chain in .vutext whose vertices drawArcRibbon rewrites per frame (entry4)" }
 0x29D150 = { name = "paintIntensity", note = "16 floats 0.1..0.8: car colour nibble -> intensity" }
 0x29D080 = { name = "tileQuadrantOrigins", note = "per quadrant: x, ?, z origin (qword) for vifSetBatchOffset" }
@@ -138,3 +253,44 @@
 0x2A43F0 = { name = "mapScissorTown", note = "SCISSOR_2 x 45..158 y 156..207 (+0x20: 36..126, +0x40: 48..208 x 68..200)" }
 0x290870 = { name = "chainMapArrow", note = "VIF chain in .vutext: the map's heading arrow (entry5)" }
 0x290940 = { name = "chainMapDot", note = "VIF chain in .vutext: the map's dot (entry5)" }
+
+# --- 2D survey & Textures data (docs/native-2d.md, docs/native-textures.md) ---
+0x29CBC0 = { name = "gifTagAd1", note = "GIF tag: NLOOP 1, EOP, PACKED A+D" }
+0x29CBD0 = { name = "gifTagTexRegs", note = "GIF tag: NLOOP 1, EOP, REGLIST TEX0_1, CLAMP_1" }
+0x29CBE0 = { name = "gifTagSprites", note = "GIF tag: EOP, PRE, PRIM 0x156 (sprite, TME, ABE, FST), A+D, NLOOP patched" }
+0x29CBF0 = { name = "gifTagQuad", note = "GIF tag: PRIM 0x154 (strip, TME, ABE, FST), PACKED CLAMP_1 + 4 x (UV, XYZ2)" }
+0x29CC00 = { name = "gifTagStrips", note = "GIF tags 0x29CC00..0x29CC50: PACKED ST/RGBAQ/XYZF2 triangle strips (IIP/TME/FGE variants)" }
+0x29CC60 = { name = "gifTagFlatLines", note = "GIF tag: linestrip A+D (unused path)" }
+0x29CC70 = { name = "gifTagBatchHeader", note = "GIF tag: NLOOP 5, EOP, A+D (batch header state writes)" }
+0x29A880 = { name = "uiGlyphWidths", note = "byte per ASCII char from 0x20: advance 8..16 px" }
+0x29F5F8 = { name = "hudTexTable", note = "HUD texture table: 16-byte entries {tex2/clamp template, TEX0}" }
+0x29AB70 = { name = "packetFade", note = "PATH2 packet 6 qw: flat full-screen sprite, colour patched at 0x29ABB0" }
+0x29A930 = { name = "packetFrameBlendNtsc", note = "PATH2 packet 9 qw: other frame buffer over this one (ALPHA 0x2000000064); +0x90 variant FIX 0x40" }
+0x29AA50 = { name = "packetFrameBlendPal", note = "PATH2 packet 9 qw, 512x256 variant" }
+0x29D0F0 = { name = "packetShadowDarken", note = "PATH2 packet: full-screen DATE shadow darkening sprite (3D side)" }
+0x29AF58 = { name = "sysFileTable", note = "12-byte {0x333388, lsn, sectors}: 0 FONT, 1 EFFECT, 2 PARTS, 3 TIRE, 4 WHEEL, 5 NOTE, 6 TITLE, 7 SCOREA?, 8 SORA, 9 POSE, 10 SELECT, 11 WORLDMAP/S00, 12 S00.E3D, 13 SCORE?, 14 OPTION2, 15 COIN" }
+0x29B29C = { name = "shopFileTable", note = "SHOP/T00..T05 (3528..4158 sectors)" }
+0x29B084 = { name = "putiFileTable", note = "entry 0 = SYS/PUTI.BIN (0xC000-byte frame n at n * 0xC000: T8 256x184 + CLUT), then SCOREA* files" }
+0x29B438 = { name = "carFileTable", note = "car files by index (loadCarModel); loadCarModelAt uses 0x29B428 + n * 0xC" }
+0x29BB50 = { name = "fieldFileTable", note = "FLD tiles (loadFieldTile)" }
+0x29BE50 = { name = "courseFileTable", note = "COURSE/ACTION files (loadCourseTile)" }
+0x29AD90 = { name = "carCopyPacket", note = "GIF packet: DMA tag, A+D BITBLTBUF/TRXPOS/TRXREG/TRXDIR=2 (car slot copy)" }
+0x2A3490 = { name = "texAnimCopyPacket", note = "GIF packet template (NLOOP patched) with 8 x {BITBLTBUF, TRXPOS, TRXREG, TRXDIR = 2}; filled from texAnimTable" }
+0x2A2BF0 = { name = "texAnimTable", note = "69 x 0x20 bytes {sbp, dbp, tbw, psm, trx w, h, scroll multipliers / masks}: T4/T8 window copies from a taller strip" }
+0x2D9F50 = { name = "texAnimCopyPacket2", note = "second template (NLOOP 0xC), used by texAnimCopyB" }
+0x333284 = { name = "language", note = "0 EN, 1 FR, 2 DE ...; indexes the UI hint strings" }
+0x333288 = { name = "videoMode", note = "0 = 640x224 fields, 1 = 512x256 (PAL)" }
+0x333370 = { name = "loadBusy", note = "1 while a load request is being served" }
+0x333374 = { name = "loadRequest", note = "request word: bits 16..19 kind, 0..7 index, 0x100000 = no blur" }
+0x335680 = { name = "uiBatchPtr", note = "current UiBatch buffer" }
+0x335684 = { name = "uiBatchCount", note = "entries in the current UiBatch (qwords)" }
+0x335688 = { name = "uiBatchPalette", note = "TEX2 CSA cached by the drawers (-1 = none)" }
+0x3356C0 = { name = "loadState", note = "load state machine step (0x8000 = a CD read is pending); -1 = done" }
+0x3362E0 = { name = "uiBatchBufferA", note = "UiBatch buffer, 0xA070 bytes (header, data tag, 0xA00 entries)" }
+0x340350 = { name = "uiBatchBufferB", note = "UiBatch buffer B" }
+0x335908 = { name = "frameParity", note = "frame buffer being drawn (0/1); 0x335909 = field parity from sceGsSyncV" }
+0x335C80 = { name = "gsDBuffA", note = "sceGsDBuffDc used normally (drive flag 0x400000 clear)" }
+0x335FB0 = { name = "gsDBuffB", note = "sceGsDBuffDc used for the loading-blur frame (drive flag 0x400000)" }
+0x1785FF0 = { name = "shopPacketArea", note = "static packet area for retained screens (limit 0x1000 qw)" }
+0x15A7B80 = { name = "extraPacketArea", note = "static buffer (limit 0x180000 B): HUD arena, carousel" }
+0x177A9D0 = { name = "titlePicturePacket", note = "PATH3 chain of the title pictures" }

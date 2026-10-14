@@ -341,17 +341,18 @@ def test_native_widescreen_hud(game_factory, name):
 
 @pytest.mark.parametrize("name", list(SCENES))
 def test_model_cache_changes_nothing(game_factory, name):
-    """Vertex blocks from the model cache (resident GPU buffers) draw the very same picture as
+    """Vertex blocks from the model cache (RT_NATIVE_MODEL_CACHE=1: resident GPU buffers) draw the very same picture as
     blocks streamed with each draw (RT_NATIVE_MODEL_CACHE=0), and the cache is really used."""
     import numpy as np
 
     uncached = {**NATIVE, "RT_NATIVE_MODEL_CACHE": "0"}
+    cached = {**NATIVE, "RT_NATIVE_MODEL_CACHE": "1"}
     game, play = SCENES[name](game_factory, uncached, f"cache_off_{name}")
     play(game)
     a = game.frame().array()
     game.close()
 
-    game, play = SCENES[name](game_factory, NATIVE, f"cache_on_{name}")
+    game, play = SCENES[name](game_factory, cached, f"cache_on_{name}")
     play(game)
     b = game.frame().array()
     text = log_of(game)

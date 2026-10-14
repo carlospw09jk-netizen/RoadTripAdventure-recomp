@@ -72,4 +72,19 @@ and the second screen already compute the projection (`rt::game::mapPoint`) for 
 
 ## 3. Defects found and fixed
 
-(See the log at the end of this file.)
+1. **Field-area Enhanced map hidden about every other run** (`test_field_area_map_is_routed`: destination
+   'overlay', `overlay: False`; also seen in the integration suites). Not the router or the map latch: the
+   test socket's `wide` reported `frame_2d: true` in a driving frame, and `MapView::overlayMap` refuses
+   2D screens. The widescreen classifier (`WideLayout`) only learns a frame's kind at its first draw, and
+   `GS::processGIFPacket` / `processNativeMarker` only ran it when widescreen was active, a depth snapshot
+   or side data was wanted. On a 4:3 window with none of those, a loading screen at the tile change (a
+   full-screen textured picture first: 2D at once) set the verdict to 2D and nothing ever set it back, so
+   the map stayed hidden for the rest of the session (a real-play bug on 4:3 displays too, not just in
+   tests). Fix (fork `bfaa019`): the classifier also runs while the frame's kind is unknown
+   (`WideLayout::frameKindUnknown`), i.e. on the first packet or native draw of a frame only. 8 of 8 passes
+   afterwards (about 1 in 2 failed before); `test_map_overlay.py` and `test_native_map_layer` pass.
+
+Open: the map is still drawn from the captured GS batches (native strips into the map layer). Section 1 lists
+what a map renderer from the game's own data needs (model strips, view block, scissor, colour sets); the
+batches already arrive as `NativeDraw` records, so the layer is independent of the GS's packet emulation on the
+native path. Not done: a separate 2D bezel/marker renderer; the bezel is still the game's UiBatch sprites.

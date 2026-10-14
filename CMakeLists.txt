@@ -44,6 +44,11 @@ if(WIN32)
     # Granite's DXGI swapchain interop pulls d3d12.h/ole2.h, which need the USER types raylib.h clashes with.
     set(GRANITE_VULKAN_DXGI_INTEROP OFF CACHE BOOL "" FORCE)
 endif()
+# The reference renderers (paraLLEl-GS's GS; the CPU GS cannot be split off yet) are the regression
+# suite's oracle, not part of the shipped app (DMG, APK, Windows zip): OFF by default. Dev builds
+# that run the regression goldens configure with -DRT_REFERENCE_RENDERERS=ON (docs/native-render.md).
+option(RT_REFERENCE_RENDERERS "Build the reference renderers (paraLLEl-GS) for tests" OFF)
+set(PS2X_REFERENCE_RENDERERS ${RT_REFERENCE_RENDERERS} CACHE BOOL "" FORCE)
 add_subdirectory(third_party/PS2Recomp EXCLUDE_FROM_ALL)
 
 set(PS2X_RUNTIME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime")

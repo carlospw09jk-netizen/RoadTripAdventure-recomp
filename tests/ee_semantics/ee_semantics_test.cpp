@@ -31,7 +31,8 @@ void PS2Runtime::SignalException(R5900Context *, PS2Exception) { ++g_unexpected;
 void PS2Runtime::handleTrap(uint8_t *, R5900Context *) { ++g_unexpected; }
 void PS2Runtime::handleBreak(uint8_t *, R5900Context *) { ++g_unexpected; }
 void PS2Runtime::handleSyscall(uint8_t *, R5900Context *, uint32_t) { ++g_unexpected; }
-bool PS2Runtime::eeCheckpointDue(uint32_t) noexcept { return false; }
+// eeCheckpointDue is inline now (budget 0 in the zeroed stand-in below sends it here).
+bool PS2Runtime::eeCheckpointDueSlow(uint32_t) noexcept { return false; }
 uint8_t PS2Runtime::Load8(uint8_t *, R5900Context *, uint32_t) { ++g_unexpected; return 0; }
 uint16_t PS2Runtime::Load16(uint8_t *, R5900Context *, uint32_t) { ++g_unexpected; return 0; }
 uint32_t PS2Runtime::Load32(uint8_t *, R5900Context *, uint32_t) { ++g_unexpected; return 0; }
@@ -51,7 +52,9 @@ namespace
     int g_failed = 0;
 
     uint8_t *g_rdram = nullptr;
-    PS2Runtime *g_runtime = nullptr; // never dereferenced by a passing case
+    // Zeroed storage: only the inline checkpoint reads it (budget 0 -> eeCheckpointDueSlow, above).
+    alignas(64) unsigned char g_runtimeStorage[sizeof(PS2Runtime)];
+    PS2Runtime *g_runtime = reinterpret_cast<PS2Runtime *>(g_runtimeStorage);
 
     void fail(const char *what, const char *name, const std::string &detail)
     {

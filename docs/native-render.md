@@ -427,3 +427,39 @@ Android**: ~12k draw calls a frame (one per strip, each with its own 9 KB consta
 Adreno (a smaller constant block changed nothing). To do: batch strips into few draws (one storage buffer of
 draw records per frame, draw index per vertex), re-measure on the Thor (fps, per-thread GHz-eq, GPU busy,
 overload pause), then present dumps of generated frames for flashing (#23 method), then default on.
+
+## Reference renderers and the shipped app (removal to-do)
+
+The shipped app (DMG, APK, Windows zip) will not contain the non-native renderers once the native
+path covers 2D and textures. The first step is a build switch, not a deletion:
+
+- `-DRT_REFERENCE_RENDERERS=ON` (parent `CMakeLists.txt`, forwarded as `PS2X_REFERENCE_RENDERERS`
+  to the fork) builds paraLLEl-GS's GS (`gs_pgs_backend.cpp` and the `parallel-gs` library). Default
+  OFF: the presets, CI and the release builds ship without it. With OFF, `createPgsBackend` returns
+  an error and only Granite (`granite-vulkan`, `granite-math`: the Vulkan device) stays, with the
+  presenter and the hardware GS.
+- Dev builds that run the regression goldens (paraLLEl-GS pictures; hw is compared to them with a
+  tolerance) configure with `cmake --preset macos-release -DRT_REFERENCE_RENDERERS=ON`.
+- Sizes on the Mac (arm64, release, LTO), `RoadTrip` binary: ON 15.9 MB (14.5 MB stripped), OFF
+  14.8 MB (13.4 MB stripped); bundle ON 26.7 MB, OFF 25.7 MB. The saving is small until the rest below goes.
+
+Still tied to the old paths (to remove, in this order):
+
+1. CPU GS (`gs_cpu_backend.cpp`, 2,000 lines): `GSFrontend` constructs it as its default backend, and
+   the hardware GS's `m_cpu` uses it for local-memory transfers, CLUT loads and readbacks. Needs
+   those moved into the native/GS-memory code (`ps2_gs_memory`).
+2. Renderer choice: Options -> Graphics -> Renderer ("Accurate (paraLLEl-GS)"), `[display] renderer`,
+   `wantHardwareGs()` and `RT_GS_BACKEND=pgs|cpu` in `src/main.cpp`, the test harness's pin of
+   `RT_GS_BACKEND=pgs`, `--update-goldens`.
+3. paraLLEl-GS-only code in shared files: `PgsControl` (texture packs, supersampling, `setDecodeHook`,
+   the settings apply code), `PgsShared` and `gs_pgs_shared.h` (also used by the presenter and the
+   hardware GS), `gs_pgs_presenter.cpp` (its Vulkan presenter is shared; the name is historical),
+   shadow frames for frame generation on paraLLEl-GS, `GSInterface::uploads` texture tracking.
+4. VU1 -> GIF packet path: `ps2_gif_arbiter.cpp`, `GS::fastPath1Run`, the packet mirror,
+   `MotionTracker::packetMotion/packetReproject`, the HUD classifier's packet parse (`WideLayout`).
+5. Save states: the `GSFE` chunk (frontend registers, local memory, CLUT) and `HWG1` (hardware GS
+   targets) are read by every GS; a state from the other one loads with empty targets.
+6. Test socket commands and tests that assume the packet path (`frame`, `gs_*`, the 3x3 comparison
+   with paraLLEl-GS goldens in `rtharness/goldens.py`).
+7. Windows and Android CMake branches that link `parallel-gs` for Granite: they link
+   `granite-vulkan` directly with OFF; check each once.

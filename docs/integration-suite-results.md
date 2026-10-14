@@ -29,3 +29,24 @@ Nothing in the list points at a codegen problem: codegen+accuracy state hashes e
 ## Merge fixes found by the suites and ctest
 
 - 128-bit direct RAM path (codegen) now aligns down (accuracy's `ee_semantics`: 7,468 failures before).
+
+## Visual review of the biggest moves (golden vs actual, no goldens updated)
+
+Caveat: `build/regression/failures` holds the last run's pictures (hw ran last), so for tests that failed in both runs the "actual" is the hw picture.
+
+| test | verdict | evidence |
+|---|---|---|
+| Night Glow A (42% pgs / 9% hw) | legit | same street, HUD identical (00'18"99, 24th/24, map); camera and lamp posts shifted a little |
+| Temple Raceway A (35.5%) | legit | same scene, time 00'18"89 identical, car slightly rotated: camera heading differs, all geometry and sky present |
+| Ninja Temple C (11%) | legit | same corridor, time/rank/map identical, small lateral offset and different dash-line phase |
+| President race start (9.2%) | legit | same corner and car, time 00'19"61 identical, speed 51 vs 53 mph, gear/camera phase |
+| Attract demo 45 s (1.8%) | legit | same cars and framing, sub-pixel/animation phase; nothing missing |
+| 2P custom carousel (24.8%) | legit | same menu cards, rotation phase of the carousel differs by a few pixels |
+| Cloud Hill town drive (hw 80%) | legit, with doubt | both show the rainbow town, HUD, speedo, car; camera pitch differs (horizon higher in the new one) and the old picture has the car semi-transparent and an empty minimap. The mismatch is the state the car is in at the sampling time. Worth one look at a second frame, nothing missing/garbage |
+| White Mountain town drive (hw 37.6%) | legit | same snow town, minimap, speedo (42 mph both); camera pitch differs (horizon lower) |
+
+No NaN/black frames, missing objects, wrong colours, garbage geometry, or wrong text in any of the eight.
+
+## `test_field_area_map_is_routed` alone (hw, this build)
+
+Run twice alone: first run passed, second failed (same assertion: dest 'overlay', `overlay: False`). It is flaky (a timing race in the map router/overlay latch), not a deterministic merge failure.

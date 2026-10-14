@@ -153,7 +153,8 @@ def test_field_area_map_is_routed(game_factory, options, test_data):
     # (our map stays off 2D frames: a tile change's loading frames can come just before)
     m = wait_for(game, lambda m: m["shown"] and m["overlay"], 300)
     assert m["state"] != town_tile, f"in another tile: {m['state']}"
-    assert m["dest"] == "overlay" and m["shown"] and m["up"] and m["overlay"], f"the field area's map is ours: {m}"
+    assert m["dest"] == "overlay" and m["shown"] and m["up"] and m["overlay"], \
+        f"the field area's map is ours: {m} wide {game._call('wide')}"
 
 
 def test_race_map_is_routed(game_factory):

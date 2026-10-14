@@ -50,3 +50,16 @@ No NaN/black frames, missing objects, wrong colours, garbage geometry, or wrong 
 ## `test_field_area_map_is_routed` alone (hw, this build)
 
 Run twice alone: first run passed, second failed (same assertion: dest 'overlay', `overlay: False`). It is flaky (a timing race in the map router/overlay latch), not a deterministic merge failure.
+
+## Goldens regenerated (user-approved)
+
+`regress.py --update-goldens` with the pgs backend on the 73 tests that failed as golden or sound-hash mismatches in the runs above (the pgs run's list, 71 updated; pixel-diff percentages are in the tables above). Only `tests/regression/goldens.json` changed: 193 entries rewritten, none added or removed; pictures and checkpoints stay in `build/regression`.
+
+Not regenerated: `test_field_area_map_is_routed` (flaky), `test_native_takes_part[frame_gen-course_2]` (passed in the rerun), and `test_adventure_race[Sandpolis-Night_Glow_Raceway_A/B]`. Those two now fail before reaching their golden: "the bot was stuck at (592, 744) (line point 161/1017, 19 recoveries) and retired" (B: 172/1022, 26 recoveries), deterministically. The adventure race bot cannot finish Night Glow with the exact-float physics. Their goldens still hold the old pictures. Needs a look at the bot's line (or at the course) before they can be regenerated.
+
+Counts, before -> after regeneration:
+
+| suite | before | after |
+|---|---|---|
+| pgs | 75 failed / 98 passed | 3 failed / 170 passed (Night Glow A/B bot retired; field-area map flaky) |
+| hw | 44 failed / 129 passed | 4 failed / 169 passed (the same three, plus `2p_River_Raceway_20s`: 0.71% off by >48, worst block 37% vs the 30% limit, the known River tolerance case fixed on re/native-bugs) |

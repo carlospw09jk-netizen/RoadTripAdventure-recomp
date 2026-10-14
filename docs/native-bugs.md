@@ -105,3 +105,16 @@ scale is blitted on load, which cannot re-serialise to the saved bytes). Suspect
 target whose scale or size at the save differs from the one at the re-save (Android's render
 scale, or the second frame buffer's height), so the blit on load changes the bytes. Needs
 `RT_STATE_HASH_FULL=1` and `state_chunks` on the device, which is off limits here.
+
+## #4 resolution: paraLLEl-GS is the one that differs
+
+Running the same 2P River Raceway test with the software GS (`RT_GS_BACKEND=cpu`, `RT_GS_SCALE=1`
+for the hardware GS, both 640x224) shows the road decal's edge, the lighter sand band along the
+road, where the hardware GS draws it: hardware and software GS agree there, the paraLLEl-GS golden
+differs. The AFAIL RGB_ONLY / ZTST GREATER handling was checked against paraLLEl-GS's own
+`ubershader.comp` (same semantics: failing-alpha pixels write RGB, not Z; strict GREATER) and an
+experiment drawing the failing pass first changed nothing. Since the shipped app has no
+paraLLEl-GS, the hardware picture stays as it is, and `tests/regression/rtharness/goldens.py`
+(`PGS_DIVERGENCE_BLOCK_LIMIT`) widens the worst-block limit for `2p_River_Raceway_20s` only (the
+overall 3% limit still applies; measured 0.95%, worst block 42%). `test_two_player_event[River_Raceway]`
+passes under hw.

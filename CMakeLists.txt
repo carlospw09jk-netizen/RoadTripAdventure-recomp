@@ -346,7 +346,6 @@ if(BUILD_TESTING AND NOT ANDROID)
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
     target_include_directories(wide_layout_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
     add_test(NAME wide_layout COMMAND wide_layout_test)
-
     # The recompiler against the R5900 manuals: instructions translated by ps2_recomp's own
     # translators, run in the EE's float mode, compared with reference models (tests/ee_semantics).
     add_executable(ee_semantics_gen tests/ee_semantics/ee_semantics_gen.cpp)
@@ -367,6 +366,12 @@ if(BUILD_TESTING AND NOT ANDROID)
     target_link_libraries(ee_semantics_test PRIVATE rt_sse2neon)
     set_target_properties(ee_semantics_test PROPERTIES CXX_STANDARD 20)
     add_test(NAME ee_semantics COMMAND ee_semantics_test)
+
+    add_executable(native_2d_test tests/native_2d_test.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_native_2d.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
+    target_include_directories(native_2d_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
+    add_test(NAME native_2d COMMAND native_2d_test)
 endif()
 
 if(NOT ANDROID)

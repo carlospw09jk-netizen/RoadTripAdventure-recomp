@@ -71,3 +71,24 @@ snapshot). Needs a screen capture of the lower display during entry.
   is the string `#Gave#a big peach#to James!` (ELF file offset 0x12fed5, lines split at `#`), the
   stamp book is built by 0x22C648; the likely cause is the letters being anchored as separate
   elements by `WideLayout`.
+
+## #31 Stamp-book letters misaligned at 16:9
+
+- Cause: the stamp caption "Gave / a big peach / to James!" (string table 0x2DBBA0, entry 7; drawn
+  by the notebook page 0x2652B8 through the generic text writer 0x24F530 -> 0x203fc8, one sprite per
+  glyph) is centred, so it crosses the edge of the left third (x = 213). `WideLayout` made every
+  glyph its own element (primitives closer than 1 px merge, letters are 2-3 px apart) and anchors
+  each element by its centre's third: the letters left of 213 took the Left anchor, the others
+  the Centre anchor, and the line broke at the boundary.
+- Fix: a small unit (up to 40 x 40 px) joins any element within 5 px along a row it overlaps by
+  half, so a text line is one element (`gs_wide_layout.cpp`, `kGlyphGap`).
+- Test: `wide_layout_test` case `textLineAcrossAThird` (fails with the old 1 px rule), and
+  `test_widescreen.py` still passes under hw. Not looked at on the game's own screen.
+
+## #4 update
+
+`RT_NATIVE_DRAW=0` gives the same picture difference (0.94% of pixels, block 42%), so it is not the
+native fan path: the clipped decal polygon's vertices (logged: fan around x -192..832, y up to 408,
+Z 273,082 .. 13,089,136) are what the game sends and reach the hardware GS the same either way.
+The difference is in how the hardware GS draws these two `GREATER` / `RGB_ONLY` batches against the
+terrain, or in paraLLEl-GS itself (the golden). Still open.

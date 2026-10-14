@@ -205,6 +205,25 @@ namespace
         CHECK(near(xAt(q, 0), 15) && near(xAt(q, 1), 90) && near(xAt(q, 2), 88.5f) && near(xAt(q, 3), 195));
     }
 
+    void textLineAcrossAThird()
+    {
+        // #31: a line of text whose letters are a few pixels apart, across the edge of the left third
+        // (x = 213), stays one element: every letter takes the same anchor, so the spacing is kept.
+        WideLayout w;
+        w.configure(16.0f / 9.0f, HudPlacement::Edges);
+        drivingFrame(w);
+        std::vector<std::pair<float, float>> line;
+        for (int i = 0; i < 8; ++i)
+        {
+            const float x = 170.0f + 14.0f * i; // 12 wide, 2 apart
+            line.push_back({x, 100});
+            line.push_back({x + 12, 112});
+        }
+        auto p = packet(kTexSprite, line);
+        run(w, PATH2, p);
+        CHECK(near(xAt(p, 6) - xAt(p, 4), 10.5f)); // letters 2 and 3 (either side of 213): the spacing kept (14 x 0.75)
+    }
+
     void newScreenAt4By3()
     {
         // The Takara logo (3D) gives way to the title: a full-screen picture is the first draw.
@@ -311,6 +330,7 @@ int main()
     title();
     messageWindow();
     separateElements();
+    textLineAcrossAThird();
     newScreenAt4By3();
     fadeKeepsVerdict();
     off();

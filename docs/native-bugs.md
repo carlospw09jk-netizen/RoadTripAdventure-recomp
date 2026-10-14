@@ -92,3 +92,16 @@ native fan path: the clipped decal polygon's vertices (logged: fan around x -192
 Z 273,082 .. 13,089,136) are what the game sends and reach the hardware GS the same either way.
 The difference is in how the hardware GS draws these two `GREATER` / `RGB_ONLY` batches against the
 terrain, or in paraLLEl-GS itself (the golden). Still open.
+
+## #10 GSFE chunk differs after loading a town state
+
+Not reproduced on the Mac: `test_save_states.py` (6 tests: race, town and loading states, save,
+load, replay, same and fresh process) passes under `RT_GS_BACKEND=hw` with `reserialized_equal`
+true after every load. The report is from the Thor (Android: hardware GS with native draws off, one
+render scale and shadow-frame settings of its own). The GSFE chunk is `GS::serializeState`: the
+frontend registers, then the backend's own part (local memory, CLUT, transfer state) and its HWG1
+extras (the real frame's render targets and Z, raw at the render scale; a state saved at another
+scale is blitted on load, which cannot re-serialise to the saved bytes). Suspect, unconfirmed: a
+target whose scale or size at the save differs from the one at the re-save (Android's render
+scale, or the second frame buffer's height), so the blit on load changes the bytes. Needs
+`RT_STATE_HASH_FULL=1` and `state_chunks` on the device, which is off limits here.

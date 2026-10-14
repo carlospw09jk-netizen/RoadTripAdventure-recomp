@@ -338,6 +338,11 @@ if(BUILD_TESTING AND NOT ANDROID)
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
     target_include_directories(wide_layout_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
     add_test(NAME wide_layout COMMAND wide_layout_test)
+    add_executable(native_2d_test tests/native_2d_test.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_native_2d.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
+    target_include_directories(native_2d_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
+    add_test(NAME native_2d COMMAND native_2d_test)
 endif()
 
 if(NOT ANDROID)

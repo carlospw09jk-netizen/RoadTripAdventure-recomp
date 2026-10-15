@@ -10,6 +10,7 @@
 #include "gameplay/ai.h"
 #include "gameplay/camera.h"
 #include "gameplay/car_state.h"
+#include "gameplay/daynight.h"
 #include "gameplay/menu.h"
 #include "gameplay/task.h"
 #include "gameplay/world.h"
@@ -42,6 +43,9 @@ struct GameLoopParams {
     float nearZ = 0.1f;
     float farZ = 500.f;
 
+    // Time of day: starting clock (vblanks since midnight, wraps at kDayTicks).
+    std::uint32_t initialClock = 0;
+
     // Cull
     float viewDistance = kDefaultViewDistance;
 };
@@ -59,6 +63,8 @@ struct FrameSnapshot {
     int lapCount = 0;
     int waypointsPassed = 0;
     std::uint64_t frame = 0;  // frames simulated since reset()
+    std::uint32_t clock = 0;  // time-of-day clock after this frame's advance
+    DayNightOutput lighting;  // updateTimeOfDayLight(0, clock) for this frame
 };
 
 class GameLoop {
@@ -89,6 +95,8 @@ private:
     int lapCount_ = 0;
     int waypointsPassed_ = 0;
     std::uint64_t frame_ = 0;
+    std::uint32_t clock_ = 0;
+    DayNightOutput lighting_;
     std::uint32_t pipelineTicks_ = 0;  // bumped by the spawned frame task
 };
 

@@ -14,7 +14,8 @@ static int g_fail = 0;
 static bool same(const FrameSnapshot& a, const FrameSnapshot& b) {
     return a.carPosition.x == b.carPosition.x && a.carPosition.z == b.carPosition.z &&
            a.heading == b.heading && a.waypointIndex == b.waypointIndex && a.lapCount == b.lapCount &&
-           a.frame == b.frame && a.visibleCells.size() == b.visibleCells.size() &&
+           a.frame == b.frame && a.clock == b.clock &&
+           std::memcmp(&a.lighting, &b.lighting, sizeof a.lighting) == 0 && a.visibleCells.size() == b.visibleCells.size() &&
            std::memcmp(a.view, b.view, sizeof a.view) == 0 && std::memcmp(a.proj, b.proj, sizeof a.proj) == 0;
 }
 
@@ -82,6 +83,46 @@ static void testCull() {
         CHECK(std::sqrt(lengthSq(c.center() - s.carPosition)) <= g.params().viewDistance + 1e-3f);
 }
 
+static void testLighting() {
+    const MenuInput mi;
+    {  // clock advances 1/tick from 0; night band
+        GameLoop g;
+        for (std::uint32_t i = 1; i <= 100; ++i) {
+            const FrameSnapshot s = g.tick(0.f, mi);
+            CHECK(s.clock == i);
+            CHECK(s.lighting.nightWeight == 1.1f && s.lighting.dayWeight == 0.f && s.lighting.duskWeight == 0.f);
+        }
+    }
+    {  // wrap at kDayTicks
+        GameLoopParams p;
+        p.initialClock = kDayTicks - 2;
+        GameLoop g(p);
+        CHECK(g.tick(0.f, mi).clock == kDayTicks - 1);
+        CHECK(g.tick(0.f, mi).clock == 0);
+        CHECK(g.tick(0.f, mi).clock == 1);
+        g.reset();
+        CHECK(g.tick(0.f, mi).clock == kDayTicks - 1);
+    }
+    {  // day band
+        GameLoopParams p;
+        p.initialClock = 60000;
+        GameLoop g(p);
+        FrameSnapshot s;
+        for (int i = 0; i < 50; ++i) s = g.tick(0.f, mi);
+        CHECK(s.clock == 60050);
+        CHECK(s.lighting.dayWeight == 1.1f && s.lighting.nightWeight == 0.f && s.lighting.duskWeight == 0.f);
+        CHECK(s.lighting.fogFar == 800.f);
+    }
+    {  // reset restores the initial clock
+        GameLoopParams p;
+        p.initialClock = 60000;
+        GameLoop g(p);
+        g.tick(0.f, mi);
+        g.reset();
+        CHECK(g.tick(0.f, mi).clock == 60001);
+    }
+}
+
 static void testDeterminism() {
     GameLoop a, b;
     const MenuInput mi;
@@ -92,6 +133,7 @@ int main() {
     testResetAndFirstTick();
     testLapCorridorCamera();
     testCull();
+    testLighting();
     testDeterminism();
     if (g_fail) { std::fprintf(stderr, "%d failure(s)\n", g_fail); return 1; }
     std::puts("game_loop tests passed");

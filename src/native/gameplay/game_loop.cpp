@@ -16,6 +16,8 @@ void GameLoop::reset() {
     lapCount_ = 0;
     waypointsPassed_ = 0;
     frame_ = 0;
+    clock_ = params_.initialClock;
+    lighting_ = DayNightOutput();
     pipelineTicks_ = 0;
 
     path_ = world_.roadWaypoints;
@@ -76,6 +78,8 @@ FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
         ai_.position.z += std::cos(ai_.heading) * sp * params_.unitsPerSpeedTick;
     }
     ++frame_;
+    clock_ = advanceTimeOfDayCounter(clock_);
+    updateTimeOfDayLight(0.0f, clock_, lighting_);
 
     // (d) camera, in render space
     CarPose pose;
@@ -104,6 +108,8 @@ FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
     s.lapCount = lapCount_;
     s.waypointsPassed = waypointsPassed_;
     s.frame = frame_;
+    s.clock = clock_;
+    s.lighting = lighting_;
     return s;
 }
 

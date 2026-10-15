@@ -49,6 +49,7 @@ set(RT_NATIVE_ASSET_SOURCES
     audio/mixer.cpp             # authored mixer model: N channels -> stereo out, no device
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
+    gameplay/progression.cpp    # authored progression mutations over the documented save fields
     gameplay/memcard.cpp        # host-file replacement for two memory-card save slots
     gameplay/menu.cpp           # authored menu, pause, and controller-config state models
     gameplay/input.cpp          # authored player input (pad/analog -> CarInput)
@@ -204,6 +205,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_compile_features(native_assets_save_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_save_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
+    add_executable(native_assets_progression_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_progression.cpp")
+    target_link_libraries(native_assets_progression_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_progression_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_progression_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
     add_executable(native_assets_memcard_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_memcard.cpp")
     target_link_libraries(native_assets_memcard_test PRIVATE rt_native_assets)
@@ -319,6 +326,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_game_loop_test
             native_assets_engine_test
             native_assets_save_test
+            native_assets_progression_test
             native_assets_memcard_test
             native_assets_daynight_test
             native_assets_daycycle_test)

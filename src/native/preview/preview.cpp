@@ -313,10 +313,14 @@ static bool initImpl(Renderer& R, std::uint32_t W, std::uint32_t H, std::string&
     stages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, vs, "main", nullptr};
     stages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fs, "main", nullptr};
     VkVertexInputBindingDescription bind{0, 12, VK_VERTEX_INPUT_RATE_VERTEX};
-    VkVertexInputAttributeDescription attr{0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0};
+    VkVertexInputAttributeDescription attrs[2] = {
+        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
+        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, 12},
+    };
+    bind.stride = 24;
     VkPipelineVertexInputStateCreateInfo vin{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
     vin.vertexBindingDescriptionCount = 1; vin.pVertexBindingDescriptions = &bind;
-    vin.vertexAttributeDescriptionCount = 1; vin.pVertexAttributeDescriptions = &attr;
+    vin.vertexAttributeDescriptionCount = 2; vin.pVertexAttributeDescriptions = attrs;
     VkPipelineInputAssemblyStateCreateInfo ia{VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
     ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkViewport vp{0, 0, static_cast<float>(W), static_cast<float>(H), 0, 1};
@@ -333,7 +337,7 @@ static bool initImpl(Renderer& R, std::uint32_t W, std::uint32_t H, std::string&
     cba.colorWriteMask = 0xF;
     VkPipelineColorBlendStateCreateInfo cb{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
     cb.attachmentCount = 1; cb.pAttachments = &cba;
-    VkPushConstantRange pcr{VK_SHADER_STAGE_VERTEX_BIT, 0, 128};
+    VkPushConstantRange pcr{VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 144};
     VkPipelineLayoutCreateInfo pli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
     pli.pushConstantRangeCount = 1; pli.pPushConstantRanges = &pcr;
     VkPipelineLayout& pl = R.pl;
@@ -378,24 +382,24 @@ static bool growBuffer(Renderer& R, std::string& error, VkDeviceSize need, VkBuf
     return true;
 }
 
-bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* viewIn, const float* projIn,
-                   std::vector<std::uint8_t>& rgbaOut, std::string& error) {
+struct SceneVertex { float x, y, z, r, g, b; };
+
+static bool renderGeometry(Renderer* Rp, const std::vector<SceneVertex>& vertices,
+                           const std::vector<std::uint32_t>& indices, const float* viewIn, const float* projIn,
+                           const float clear[4], const float fog[4], std::vector<std::uint8_t>& rgbaOut,
+                           std::string& error) {
     if (!Rp) { error = "null renderer"; return false; }
     Renderer& R = *Rp;
     const std::uint32_t W = R.W, H = R.H;
     VkDevice dev = R.dev;
-    if (model.indices.empty() || model.vertices.empty()) { error = "empty model"; return false; }
-
-    std::vector<float> pos;
-    pos.reserve(model.vertices.size() * 3);
-    for (const auto& v : model.vertices) { pos.push_back(v.px); pos.push_back(v.py); pos.push_back(v.pz); }
-    const VkDeviceSize vbSize = pos.size() * sizeof(float);
-    const VkDeviceSize ibSize = model.indices.size() * sizeof(std::uint32_t);
+    if (indices.empty() || vertices.empty()) { error = "empty geometry"; return false; }
+    const VkDeviceSize vbSize = vertices.size() * sizeof(SceneVertex);
+    const VkDeviceSize ibSize = indices.size() * sizeof(std::uint32_t);
     if (!growBuffer(R, error, vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, R.vb, R.vbm, R.vbCap)) return false;
     if (!growBuffer(R, error, ibSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, R.ib, R.ibm, R.ibCap)) return false;
     void* p;
-    VK_TRY(vkMapMemory(dev, R.vbm, 0, vbSize, 0, &p), "vkMapMemory"); std::memcpy(p, pos.data(), vbSize); vkUnmapMemory(dev, R.vbm);
-    VK_TRY(vkMapMemory(dev, R.ibm, 0, ibSize, 0, &p), "vkMapMemory"); std::memcpy(p, model.indices.data(), ibSize); vkUnmapMemory(dev, R.ibm);
+    VK_TRY(vkMapMemory(dev, R.vbm, 0, vbSize, 0, &p), "vkMapMemory"); std::memcpy(p, vertices.data(), vbSize); vkUnmapMemory(dev, R.vbm);
+    VK_TRY(vkMapMemory(dev, R.ibm, 0, ibSize, 0, &p), "vkMapMemory"); std::memcpy(p, indices.data(), ibSize); vkUnmapMemory(dev, R.ibm);
 
     Mat view, proj{};
     if (viewIn && projIn) {
@@ -403,7 +407,13 @@ bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* 
         std::memcpy(proj.data(), projIn, 64);
     } else {
         // Camera: fit the bounding sphere, orthographic, 3/4 view.
-        const ModelStats st = computeStats(model);
+        ModelStats st;
+        constexpr float inf = std::numeric_limits<float>::infinity();
+        st.bmin = {inf, inf, inf}; st.bmax = {-inf, -inf, -inf};
+        for (const auto& v : vertices) for (int i = 0; i < 3; ++i) {
+            const float p0[3] = {v.x, v.y, v.z};
+            st.bmin[i] = std::min(st.bmin[i], p0[i]); st.bmax[i] = std::max(st.bmax[i], p0[i]);
+        }
         float c[3], r = 0;
         for (int i = 0; i < 3; ++i) c[i] = 0.5f * (st.bmin[i] + st.bmax[i]);
         for (int i = 0; i < 3; ++i) { const float e = 0.5f * (st.bmax[i] - st.bmin[i]); r += e * e; }
@@ -420,8 +430,9 @@ bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* 
         proj[10] = 1.0f / (2.0f * r); proj[14] = 0.5f; proj[15] = 1.0f;  // view z in [-r, r] -> [0,1]
     }
     Mat mvp = mul(proj, view);
-    float pc[32];
+    float pc[36];
     std::memcpy(pc, mvp.data(), 64); std::memcpy(pc + 16, view.data(), 64);
+    std::memcpy(pc + 32, fog, 16);
 
     const VkDeviceSize rbSize = static_cast<VkDeviceSize>(W) * H * 4;
     VkCommandBuffer cmd = R.cmd;
@@ -429,7 +440,7 @@ bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* 
     VkCommandBufferBeginInfo bbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
     vkBeginCommandBuffer(cmd, &bbi);
     VkClearValue clears[2]{};
-    clears[0].color = {{0.08f, 0.09f, 0.12f, 1.0f}};
+    clears[0].color = {{clear[0], clear[1], clear[2], clear[3]}};
     clears[1].depthStencil = {1.0f, 0};
     VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
     rbi.renderPass = R.rp; rbi.framebuffer = R.fb; rbi.renderArea = {{0, 0}, {W, H}};
@@ -439,8 +450,8 @@ bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* 
     VkDeviceSize off = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &R.vb, &off);
     vkCmdBindIndexBuffer(cmd, R.ib, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdPushConstants(cmd, R.pl, VK_SHADER_STAGE_VERTEX_BIT, 0, 128, pc);
-    vkCmdDrawIndexed(cmd, static_cast<std::uint32_t>(model.indices.size()), 1, 0, 0, 0);
+    vkCmdPushConstants(cmd, R.pl, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 144, pc);
+    vkCmdDrawIndexed(cmd, static_cast<std::uint32_t>(indices.size()), 1, 0, 0, 0);
     vkCmdEndRenderPass(cmd);
     VkBufferImageCopy copy{};
     copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
@@ -457,6 +468,74 @@ bool previewRender(Renderer* Rp, const assets::NativeModel& model, const float* 
     std::memcpy(rgbaOut.data(), p, rbSize);
     vkUnmapMemory(dev, R.rbm);
     return true;
+}
+
+bool previewRender(Renderer* r, const assets::NativeModel& model, const float* view, const float* proj,
+                   std::vector<std::uint8_t>& rgbaOut, std::string& error) {
+    std::vector<SceneVertex> vertices;
+    vertices.reserve(model.vertices.size());
+    for (const auto& v : model.vertices) {
+        const bool ground = std::abs(v.py) < 1e-4f;
+        vertices.push_back({v.px, v.py, v.pz, ground ? .25f : .9f, ground ? .45f : .8f, ground ? .3f : .6f});
+    }
+    const float clear[4] = {.08f, .09f, .12f, 1.f};
+    const float fog[4] = {0.f, 0.f, 0.f, 1e30f};
+    return renderGeometry(r, vertices, model.indices, view, proj, clear, fog, rgbaOut, error);
+}
+
+static void addQuad(std::vector<SceneVertex>& vertices, std::vector<std::uint32_t>& indices,
+                    const gameplay::Vec2& a, const gameplay::Vec2& b, float halfWidth, const float color[3]) {
+    const gameplay::Vec2 d = b - a;
+    const float len = std::max(std::sqrt(d.x * d.x + d.z * d.z), 1e-4f);
+    const float nx = -d.z / len * halfWidth, nz = d.x / len * halfWidth;
+    const std::uint32_t base = static_cast<std::uint32_t>(vertices.size());
+    for (const auto& p : {gameplay::Vec2{a.x + nx, a.z + nz}, {b.x + nx, b.z + nz},
+                          {b.x - nx, b.z - nz}, {a.x - nx, a.z - nz}})
+        vertices.push_back({p.x, 0.01f, p.z, color[0], color[1], color[2]});
+    for (std::uint32_t i : {0u, 2u, 1u, 0u, 3u, 2u}) indices.push_back(base + i);
+}
+
+static void argbToRgb(std::uint32_t argb, float out[3]) {
+    out[0] = static_cast<float>((argb >> 16) & 0xff) / 255.f;
+    out[1] = static_cast<float>((argb >> 8) & 0xff) / 255.f;
+    out[2] = static_cast<float>(argb & 0xff) / 255.f;
+}
+
+bool previewRenderScene(Renderer* r, const assets::NativeModel& car, const gameplay::FrameSnapshot& s,
+                        const gameplay::World& world, std::vector<std::uint8_t>& rgbaOut, std::string& error) {
+    std::vector<SceneVertex> vertices;
+    std::vector<std::uint32_t> indices;
+    const float grass[3] = {.16f, .42f, .18f}, asphalt[3] = {.10f, .11f, .12f};
+    // Field ground in render units: World is 1600 units, snapshots use a 0.1 scale.
+    const std::uint32_t groundBase = 0;
+    for (const auto& p : {gameplay::Vec2{0, 0}, {160, 0}, {160, 160}, {0, 160}})
+        vertices.push_back({p.x, 0.f, p.z, grass[0], grass[1], grass[2]});
+    for (std::uint32_t i : {0u, 2u, 1u, 0u, 3u, 2u}) indices.push_back(groundBase + i);
+    const auto& path = world.roadWaypoints;
+    const std::size_t count = path.size();
+    const std::size_t segments = count > 1 ? (world.roadClosed ? count : count - 1) : 0;
+    for (std::size_t i = 0; i < segments; ++i) {
+        const auto& a = path[i]; const auto& b = path[(i + 1) % count];
+        addQuad(vertices, indices, {a.x * .1f, a.z * .1f}, {b.x * .1f, b.z * .1f}, world.roadHalfWidth * .1f, asphalt);
+    }
+    const ModelStats st = computeStats(car);
+    const float cx = .5f * (st.bmin[0] + st.bmax[0]), cz = .5f * (st.bmin[2] + st.bmax[2]);
+    const float scale = 4.4f / std::max(st.bmax[2] - st.bmin[2], 1e-3f);
+    const float sh = std::sin(s.heading), ch = std::cos(s.heading);
+    const std::uint32_t carBase = static_cast<std::uint32_t>(vertices.size());
+    for (const auto& v : car.vertices) {
+        const float x = (v.px - cx) * scale, z = (v.pz - cz) * scale;
+        vertices.push_back({s.carPosition.x * .1f + x * ch + z * sh, (v.py - st.bmin[1]) * scale,
+                            s.carPosition.z * .1f - x * sh + z * ch, .9f, .8f, .6f});
+    }
+    for (std::uint32_t i : car.indices) indices.push_back(carBase + i);
+    float sky[3], fogColor[3];
+    argbToRgb(s.lighting.skyColour, sky); argbToRgb(s.lighting.fogColourRGBA, fogColor);
+    const float clear[4] = {sky[0], sky[1], sky[2], 1.f};
+    // GameLoop's world is converted to render units (0.1) before the camera
+    // matrices are made, so fog range must use the same scale as vView.
+    const float fog[4] = {fogColor[0], fogColor[1], fogColor[2], s.lighting.fogFar * .1f};
+    return renderGeometry(r, vertices, indices, s.view, s.proj, clear, fog, rgbaOut, error);
 }
 
 bool renderModel(const assets::NativeModel& model, std::uint32_t W, std::uint32_t H,

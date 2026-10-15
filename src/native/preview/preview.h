@@ -1,6 +1,8 @@
 #pragma once
 
 #include "assets/native_model.h"
+#include "gameplay/game_loop.h"
+#include "gameplay/world.h"
 
 #include <array>
 #include <cstdint>
@@ -28,6 +30,11 @@ Renderer* previewInit(std::uint32_t width, std::uint32_t height, std::string& er
 // Re-uses the context; null view/proj => auto-fit camera. Geometry is re-uploaded per call.
 bool previewRender(Renderer* r, const assets::NativeModel& model, const float* view, const float* proj,
                    std::vector<std::uint8_t>& rgbaOut, std::string& error);
+// Draws the authored field (grass and an explicit road ribbon) plus `car`, using
+// the camera and time-of-day lighting emitted by GameLoop.
+bool previewRenderScene(Renderer* r, const assets::NativeModel& car,
+                        const gameplay::FrameSnapshot& snapshot, const gameplay::World& world,
+                        std::vector<std::uint8_t>& rgbaOut, std::string& error);
 void previewDestroy(Renderer* r);
 
 // One-shot convenience wrappers (init -> render -> destroy).

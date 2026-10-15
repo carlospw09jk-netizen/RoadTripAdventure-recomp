@@ -100,3 +100,15 @@ prove tick rate, `00` handling, E0 gain conversion, E4/E5/EA pitch equations,
 F1/F9 semantics, and whether the reverb labels map directly to SPU calls.
 Until then, these labels are sufficient for a bounded event decoder/MIDI-like
 export, but not for bit-accurate playback.
+
+## Provisional native offline-render constants
+
+`assets/tsq_sequencer.{h,cpp}` provides a deliberately device-independent PCM
+preview, not an emulation of the SNDMOD driver.  Until driver tracing proves
+otherwise it uses **60 ticks/sec**, assumes headerless TVB PCM is naturally
+**44100 Hz**, and treats **key 0 as the sample's natural pitch**.  Its pitch
+ratio is `2^((key + fineSemitones) / 12)`, with E4/E5/EA interpreted as signed
+little-endian `fineSemitones = value / 4096`.  E0 is a linear `value / 127`
+gain and E1 is independent linear left/right gain (`ll / 64`, `rr / 64`).
+These are useful, bounded preview choices only; all are unverified against the
+original driver.

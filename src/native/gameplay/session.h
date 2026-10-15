@@ -25,6 +25,8 @@ public:
 
     [[nodiscard]] const SaveData& progress() const { return progress_; }
     [[nodiscard]] const FrameSnapshot& lastSnapshot() const { return lastSnapshot_; }
+    [[nodiscard]] const World& world() const { return gameLoop_.world(); }
+    [[nodiscard]] int totalLaps() const { return gameLoop_.params().totalLaps; }
 
     bool save(MemoryCard& card, int slot) const;
     bool load(const MemoryCard& card, int slot);

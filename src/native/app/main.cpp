@@ -4,9 +4,9 @@
 #include "assets/native_model.h"
 #include "audio/engine.h"
 #include "audio/vag_loader.h"
-#include "gameplay/game_loop.h"
 #include "gameplay/input.h"
 #include "gameplay/menu.h"
+#include "gameplay/session.h"
 #include "preview/preview.h"
 #include "preview/race_hud.h"
 
@@ -320,6 +320,16 @@ const char* appStateName(AppState state) {
     return "UNKNOWN";
 }
 
+const char* sessionStateName(rt::native::gameplay::SessionState state) {
+    using rt::native::gameplay::SessionState;
+    switch (state) {
+    case SessionState::EXPLORE: return "EXPLORE";
+    case SessionState::RACE: return "RACE";
+    case SessionState::RESULTS: return "RESULTS";
+    }
+    return "UNKNOWN";
+}
+
 AppState initialAppState() {
     const char* value = std::getenv("RT_APP_STATE");
     if (value && std::strcmp(value, "MENU") == 0) return AppState::MENU;
@@ -395,13 +405,17 @@ int main() {
         return true;
     };
     auto car = demoCar();
-    rt::native::gameplay::GameLoopParams loopParams;
-    loopParams.raceMode = true;
-    rt::native::gameplay::GameLoop loop(loopParams);
+    // One lap lets the headless host exercise the complete authored session
+    // loop promptly; GameSession enables race mode for its owned GameLoop.
+    rt::native::gameplay::GameSession session(1);
     rt::native::gameplay::ControllerConfig controllerConfig;
-    bool playerDriven = true, running = true; int frames = 0;
+    bool playerDriven = false, running = true; int frames = 0;
     std::uint64_t simulationFrame = 0;
     AppState state = initialAppState();
+    // RT_APP_STATE=PLAYING is the host's direct-launch shortcut.  Start its
+    // first race explicitly; ordinary session flow returns to EXPLORE after
+    // results and waits there for Enter/R.
+    if (state == AppState::PLAYING) session.startRace();
     rt::native::gameplay::MenuFlow menuFlow;
     if (state == AppState::MENU) menuFlow.screen = rt::native::gameplay::MenuScreen::MODE_SELECT;
     auto previous = std::chrono::steady_clock::now();
@@ -418,8 +432,18 @@ int main() {
                     menuInput.confirm = menuInput.confirm || event.key.scancode == SDL_SCANCODE_RETURN;
                     menuInput.cancel = menuInput.cancel || event.key.scancode == SDL_SCANCODE_ESCAPE;
                 }
-                if (state == AppState::PLAYING && event.key.scancode == SDL_SCANCODE_ESCAPE) returnToMenu = true;
-                if (state == AppState::PLAYING && event.key.scancode == SDL_SCANCODE_TAB) playerDriven = !playerDriven;
+                if (state == AppState::PLAYING) {
+                    if (event.key.scancode == SDL_SCANCODE_ESCAPE) returnToMenu = true;
+                    if (event.key.scancode == SDL_SCANCODE_TAB &&
+                        session.state() == rt::native::gameplay::SessionState::RACE)
+                        playerDriven = !playerDriven;
+                    if (session.state() == rt::native::gameplay::SessionState::EXPLORE &&
+                        (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_R))
+                        session.startRace();
+                    if (session.state() == rt::native::gameplay::SessionState::RESULTS &&
+                        event.key.scancode == SDL_SCANCODE_RETURN)
+                        session.continueFromResults();
+                }
             }
             if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) resize = true; }
         if (!running) break;
@@ -431,7 +455,12 @@ int main() {
             state = AppState::MENU;
         } else if (state == AppState::MENU) {
             const auto menuEvent = rt::native::gameplay::tickMenuFlow(menuFlow, menuInput, dt);
-            if (menuEvent.type == rt::native::gameplay::MenuEventType::MODE_SELECTED) state = AppState::PLAYING;
+            if (menuEvent.type == rt::native::gameplay::MenuEventType::MODE_SELECTED) {
+                state = AppState::PLAYING;
+                // Preserve the old direct-to-race menu launch while leaving
+                // EXPLORE available after results (and via direct PLAYING).
+                session.startRace();
+            }
             if (menuEvent.type == rt::native::gameplay::MenuEventType::CANCEL && menuFlow.screen == rt::native::gameplay::MenuScreen::TITLE)
                 state = AppState::TITLE;
         } else if (state == AppState::PLAYING && returnToMenu) {
@@ -453,10 +482,17 @@ int main() {
         const auto input = rt::native::gameplay::playerCarInput(pad, axes, controllerConfig);
         rt::native::gameplay::FrameSnapshot snapshot;
         if (state == AppState::PLAYING) {
-            snapshot = playerDriven ? loop.tickPlayer(dt, {}, input) : loop.tick(dt, {});
+            // GameSession owns the race loop.  Its current public update path
+            // is AI-driven; Tab remains the race-mode selection control for
+            // the host UI and is logged below.
+            session.update(menuInput);
+            snapshot = session.lastSnapshot();
             simulationFrame = snapshot.frame;
             std::cout << "rt-app input mode=" << (playerDriven ? "player" : "ai") << " steer=" << input.steer
                       << " gas=" << input.gas << " brake=" << input.brake << " reverse=" << input.reverse << "\n";
+            std::cout << "rt-app session state=" << sessionStateName(session.state())
+                      << " lap=" << snapshot.lap << " finished=" << snapshot.finished
+                      << " money=" << session.progress().money << "\n";
         }
         std::cout << "rt-app state=" << appStateName(state) << " menu_cursor_row=" << menuFlow.topLevelCursor << "\n";
         if (!noRender && presenter.extent.width && presenter.extent.height) {
@@ -465,11 +501,11 @@ int main() {
                 std::vector<std::uint8_t> pixels;
                 bool rendered = false;
                 if (state == AppState::PLAYING) {
-                    rendered = rt::native::preview::previewRenderScene(renderer, car, snapshot, loop.world(), pixels, error);
+                    rendered = rt::native::preview::previewRenderScene(renderer, car, snapshot, session.world(), pixels, error);
                     if (rendered) {
                         std::vector<std::uint8_t> hudPixels;
                         rendered = rt::native::preview::previewRender2D(
-                            renderer, rt::native::preview::raceHudQuads(snapshot, loop.params().totalLaps,
+                            renderer, rt::native::preview::raceHudQuads(snapshot, session.totalLaps(),
                                                                          static_cast<int>(presenter.extent.width), static_cast<int>(presenter.extent.height)),
                             {0.f, 0.f, 0.f, 0.f}, hudPixels, error);
                         if (rendered) compositeOver(pixels, hudPixels);

@@ -59,6 +59,7 @@
 
 #include "raylib.h"
 #include <SDL3/SDL_gamepad.h>
+#include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_init.h>
 #include <SDL3/SDL_joystick.h>
 #include <SDL3/SDL_scancode.h>
@@ -942,6 +943,12 @@ int main(int argc, char *argv[])
             if (const size_t eq = line.find('='); eq != std::string::npos && line[0] != '#')
                 ps2x::setEnv(line.substr(0, eq).c_str(), line.substr(eq + 1).c_str());
     }
+    // The device's rotation lock must not make the setup screens portrait: SDL otherwise
+    // requests SCREEN_ORIENTATION_FULL_USER for our resizable window (SDLActivity's
+    // setOrientationBis) and follows the user's lock, while the UI scales with the window
+    // height - a portrait-locked phone would get a tall overflowing layout. Landscape only,
+    // like the manifest's sensorLandscape.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
 #endif
     Options opts = parseArgs(argc, argv);
     // Portable copy (Windows: portable.txt beside RoadTrip.exe): everything in <exe folder>/data,

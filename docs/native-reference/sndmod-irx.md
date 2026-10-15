@@ -29,9 +29,9 @@ Loop: read byte; `00..7F` = set countdown to that many ticks. Else:
 | `E8` / `E9` | reverb-on / reverb-off flag (+0x17) | 0 op — **confirmed** |
 | `EA cc cc` | `pitch_cent` | u16 cents |
 | `F0` | `key_off` | |
-| `F1 a` | `pri_chg` | channel priority |
+| `F1 a` | `pri_chg` | 1 op — voice priority byte |
 | `F8 dd dd` | `data_jump` | signed 16-bit delta added **after** the two operand bytes (matches our implementation) |
-| `F9` | `ext_chan` | external channel |
+| `F9 cc cc` | `ext_chan` | 2 ops — u16 external-channel allocation |
 | `FF` | `data_end` | |
 
 ## Volume math (`volume`) — PROVEN

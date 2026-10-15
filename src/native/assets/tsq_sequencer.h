@@ -25,6 +25,10 @@ enum class TsqNoteKind : std::uint8_t {
     Volume,
     Pan,
     Pitch,
+    Tempo,     // E3: u16 master tempo scale (IRX: tempo() consumes 2 bytes)
+    Reverb,    // E6 mode / E7 depth / E8 on / E9 off
+    Priority,  // F1: voice priority byte (IRX: pri_chg)
+    ExtChan,   // F9: external channel alloc, u16 (IRX: ext_chan)
     Loop,
     End,
     Unknown,

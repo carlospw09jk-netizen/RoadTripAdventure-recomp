@@ -19,9 +19,8 @@ std::uint16_t readLe16(std::span<const std::uint8_t> data, std::size_t offset) {
 }
 
 bool isEventByte(std::uint8_t byte) {
-    return byte <= 0xdf || byte == 0xe0 || byte == 0xe1 || byte == 0xe2 ||
-           byte == 0xe4 || byte == 0xe5 || byte == 0xea || byte == 0xf0 ||
-           byte == 0xf8 || byte == 0xff;
+    return byte <= 0xdf || (byte >= 0xe0 && byte <= 0xea) || byte == 0xf0 ||
+           byte == 0xf1 || byte == 0xf8 || byte == 0xf9 || byte == 0xff;
 }
 
 // BGM outer spans sometimes point to another table whose segment marker is
@@ -142,6 +141,26 @@ DecodedTrack decodeTrack(std::span<const std::uint8_t> data, std::size_t start,
                 target < static_cast<std::ptrdiff_t>(data.size())) {
                 pc = static_cast<std::size_t>(target);
             }
+        } else if (status == 0xe3 && pc + 1 < data.size()) {
+            const auto tempo = static_cast<std::int32_t>(readLe16(data, pc));
+            pc += 2;
+            out.stats.consumedBytes += 2;
+            emit(TsqNoteKind::Tempo, 0, tempo);
+        } else if ((status == 0xe6 || status == 0xe7) && pc < data.size()) {
+            const auto value = static_cast<std::int32_t>(data[pc++]);
+            ++out.stats.consumedBytes;
+            emit(TsqNoteKind::Reverb, status == 0xe6 ? 0 : 1, value);
+        } else if (status == 0xe8 || status == 0xe9) {
+            emit(TsqNoteKind::Reverb, status == 0xe8 ? 2 : 3, 0);
+        } else if (status == 0xf1 && pc < data.size()) {
+            const auto value = static_cast<std::int32_t>(data[pc++]);
+            ++out.stats.consumedBytes;
+            emit(TsqNoteKind::Priority, 0, value);
+        } else if (status == 0xf9 && pc + 1 < data.size()) {
+            const auto value = static_cast<std::int32_t>(readLe16(data, pc));
+            pc += 2;
+            out.stats.consumedBytes += 2;
+            emit(TsqNoteKind::ExtChan, 0, value);
         } else {
             emit(TsqNoteKind::Unknown, status);
             ++out.stats.unknownBytes;

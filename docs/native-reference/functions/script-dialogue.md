@@ -1,0 +1,32 @@
+# Script & Dialogue
+
+The town/shop event script interpreter, message and dialog display tasks, escape-code text rendering, name token substitution, and the number/amount editor widgets.
+
+Entries marked *(unresolved)* carry a placeholder `UNKNOWN_` symbol; their behaviour below comes from decompilation notes only.
+
+| Address | Name | What it does | Callers | Callees |
+| --- | --- | --- | --- | --- |
+| `0x00239150` | `DisplayTextDialog` | Builds a text object with two appended strings and submits it, or polls completion and ends the task with its result. [inferred] | `0x00248A70`, `0x00248BF0` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x00204DE8` |
+| `0x00239260` | `DisplayMenuMessage` | Builds a five-line text object from the player table and submits it; on completion returns a byte from the results table. [inferred] | `0x0023B168`, `0x0023BC90` | `0x002058A8`, `0x00205AD0`, `0x00205C08`, `0x00205C20`, `0x00258E50`, `0x00204DE8` |
+| `0x00239378` | `ShowAwardMessage` | Displays an award/status message with a list of seven values, then kills the task when the display completes. [inferred] | `0x00239748` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x0023D2C0`, `0x0023DA58`, `0x0023DB00`, `0x00258E50`, `0x00258F70`, `0x00258FD0`, `0x00204DE8` |
+| `0x00239508` | `ShowResidentMessage` | Shows a message, then updates the gs_houses_residents pointer table and player slot before ending the task. [inferred] | `0x00239748` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x00239748`, `0x0023D390`, `0x0023DB00`, `0x00258E50`, `0x00204DE8` |
+| `0x00239748` | `ShowSequencedMessages` | Steps through message pages via FUN_0023dbc8 and chains to FUN_00239378 or FUN_00239508 based on the returned page. [inferred] | `0x00239508`, `0x0023B168` | `0x002058A8`, `0x00205AD0`, `0x00205C08`, `0x00205C20`, `0x00239378`, `0x00239508`, `0x0023DB00`, `0x0023DBC8`, `0x00258E50`, `0x00204DE8` |
+| `0x00239900` | `ShowPlayerSelect` | Builds a player-name selection text (players 0-2), submits it, and returns the chosen player index or -1. [inferred] | `0x0023B168` | `0x002058A8`, `0x00205AD0`, `0x00205C08`, `0x00205C20`, `0x0023DB00`, `0x00258E50`, `0x00204DE8` |
+| `0x00239F68` | `ShowRankedMessage` | Builds a message string via FUN_00243468 and a type switch (cases 1-7) and displays it, ending the task when done. [inferred] | `0x0023B168` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x0023D2C0`, `0x00243468`, `0x00258E50`, `0x00258F70`, `0x00258FD0`, `0x00204DE8` |
+| `0x0023A140` | `ShowPrizeScreen` | Converts the stored prize value into an on-screen amount (divide by 0x649) and draws the payout message until confirm. [inferred] | `0x0023B168` | `0x00201E48`, `0x00204310`, `0x00204568`, `0x0023DC58`, `0x00258E50`, `0x00258F70`, `0x00258FD0`, `0x00204DE8` |
+| `0x0023A320` | `HandleNumberSpinner` | Edits a 0-99 counter with up/down input (0x4000/0x1000), draws it, and ends the task on confirm. [inferred] | `0x0023B168` | `0x00201E48`, `0x00202350`, `0x00203E70`, `0x00258E50`, `0x00204DE8` |
+| `0x0023A460` | `HandleAmountAdjuster` | Digit-by-digit amount editor (up/down, x10/div10, min/max steps) that commits money changes on confirm. [inferred] | `0x0023B168` | `0x00201E48`, `0x00203E70`, `0x00204310`, `0x00204568`, `0x0022E8C0`, `0x0023DC58`, `0x00258E50`, `0x00204DE8` |
+| `0x0023A8E8` | `RenderEscapeText` | Word-wraps and draws a string, expanding '$X' codes (money, time, course name, etc.) and advancing the byte cursor. [inferred] | `0x0023B168` | `0x002017B0`, `0x002039E8`, `0x00204230`, `0x00204460`, `0x0027EEE0` |
+| `0x0023AD00` | `InterpretScriptCommands` | Interprets control bytes 1-0x1d (conditions/setup) of a town-shop event script and returns the next script pointer. [inferred] | `0x0023B168` | `0x0023C7B0`, `0x0023CB68`, `0x0023D390`, `0x0023D488`, `0x0023D5E0`, `0x0023D5F8`, `0x0023D628`, `0x0023D730`, `0x0023D778`, `0x0023D7A8`, `0x0023D7E0`, `0x0023D8C8`, `0x0023D8E8`, `0x0023D968`, `0x0023DB80`, `0x0023DBC8`, `0x0023DBF0`, `0x0023DCC0`, `0x0023DD30`, `0x0023DDB8`, `0x0023DE30`, `0x0023DE50`, `0x0027EA30` |
+| `0x0023BB00` | `ShowMessageAndWait` | Displays a single message string and waits for it to finish, then ends the task with result 0. [inferred] | `0x00239A80`, `0x00256640` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x00258E50`, `0x00204DE8` |
+| `0x0023BB88` | `UNKNOWN_0x0023BB88` *(unresolved)* | Task step: first run loads two string tables into a text object via FUN_002058a8; later runs poll FUN_00205c08 and kill task [inferred] | `0x00256640` | `0x002058A8`, `0x00205C08`, `0x00205C20`, `0x00204DE8` |
+| `0x0023BC90` | `UNKNOWN_0x0023BC90` *(unresolved)* | Sets task handler to FUN_00239260, marks state byte +0xd=1, and calls FUN_00239260 once [inferred] | `0x0023B168` | `0x00239260` |
+| `0x0023BCD0` | `UNKNOWN_0x0023BCD0` *(unresolved)* | Task step reading tab-terminated text records from a pointer; advances the cursor, then waits on FUN_00205c08 and kills on -2 [inferred] | `0x0023B168` | `0x002058A8`, `0x00205AD0`, `0x00205C08`, `0x00205C20`, `0x00258E50`, `0x00204DE8` |
+| `0x0023BE18` | `UNKNOWN_0x0023BE18` *(unresolved)* | Spawns task 0x25bcf0 on first run; when flag +0x24 set, copies a byte into parent +4, sets flag, kills self | `0x0023B168` | `0x00204DE8`, `0x00204C48` |
+| `0x0023BE88` | `UNKNOWN_0x0023BE88` *(unresolved)* | Spawns task 0x2083c0 with count from table indexed by byte at +0x1c; on state 0x40 copies byte+1 to parent and kills self | `0x0023B168` | `0x00204DE8`, `0x00204C48` |
+| `0x0023DFA0` | `SubmitMessage31` | Submits its argument to the shared message routine using fixed identifiers 0x1F and 0x31. [inferred] | `0x002364B0` | `0x0023C6B0` |
+| `0x0023DFC0` | `SubmitMessage2B` | Submits its argument to the shared message routine using fixed identifiers 0x50 and 0x2B. [inferred] | `0x002105B8` | `0x0023C6B0` |
+| `0x0024E7D8` | `CopyDialogueTextBounded` | Copies string with 2-byte escape handling up to a limit, NUL-terminates; dialogue text copy [inferred]. | — | `0x0027F430` |
+| `0x0024EA00` | `ExtractDelimitedToken` | Extracts the n-th delimited token from string param_2 using delimiter set param_3 into buffer param_1 [inferred] | `0x002161E0`, `0x002652B8`, `0x00265568` | — |
+| `0x00264CB0` | `SubstituteNameTokens` | '$N' substitution: grabs name from FUN_0023DB00(0,0) and replaces the $N token in caller's text buffer. [inferred] | — | `0x0023DB00`, `0x0027EF70`, `0x0027F1E0` |
+

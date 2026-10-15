@@ -210,6 +210,645 @@
 0x24F928 = { name = "uiArenaSpritesWrap", note = "uiArenaSprites with wrap modes, 40-byte records" }
 0x26C588 = { name = "creditsScene", note = "guess: ending credits packet (vifDirect 0x1772670, 0x9D qw)" }
 
+# --- Batch merge: newly documented functions (decomp-audit out-batch-*.tsv) ---
+0x205D00 = { name = "AdjustWidgetCentering", note = "Increments frame byte at +0x11, recenters/resizes widget rect around a width from FUN_00203f40 [inferred]." }
+0x205EE8 = { name = "DrawWidgetIfFlag16", note = "If flag bit 0x10 set, draws a 2-unit item at computed centered position via FUN_00203e70." }
+0x205F48 = { name = "DrawWidgetIfFlag16Alt", note = "If flag bit 0x10 set, draws a 3-unit item at computed position via FUN_00203e70." }
+0x2085B0 = { name = "ReflectVectorVU0", note = "VU0 vector math: reflects input vector about normal (param3) with scale param2; uses FUN_00272* helpers [inferred]." }
+0x20E030 = { name = "SendTexturePacketsDMA", note = "Walks packet list until 'p' marker, adjusts texture field, waits DMA channel 1, then calls sendTexturePackets." }
+0x20E140 = { name = "InitFlagsIfNotLocked", note = "If flag 0x100000 clear: sets 0x400000 when count<0x40, calls FUN_002080f8 and FUN_00204310, sets 0x80000000 [inferred]." }
+0x20E4E8 = { name = "ToggleInputFlagWrapper", note = "Thin wrapper calling FUN_0020dcd8 with param XOR 1." }
+0x20E5B8 = { name = "SaveAIDataFile", note = "Formats 'AI Save %s' path, opens file, writes non-zero-trimmed buffer in byte-sized sceWrite calls, closes." }
+0x211530 = { name = "SpawnTasksFromCarTable", note = "Fills 0x177ea60 table with per-entry addresses from DAT tables and spawns task 0x20dc50 via gs_tasks_spawn [inferred]." }
+0x211648 = { name = "SpawnTasksFromResidentTable", note = "Builds address table from gs_houses_residents entries and spawns task 0x20dc50 via gs_tasks_spawn [inferred]." }
+0x2174E0 = { name = "UpdateOptionsMenu", note = "Per-frame options menu: init state on first call, resets buffer on page change, runs settings page, kills task on exit." }
+0x21CA90 = { name = "UpdateObjectPhysicsState", note = "Integrates position/velocity from float scale, calls FUN_002180c0, resets many state fields, optionally FUN_00258e50 [inferred]." }
+0x21D7F8 = { name = "BuildDmaPacketSlot3A", note = "Writes 3-quad DMA/GIF tag header from constants at DAT_0029cc00 and calls FUN_0021d470 (variant 3,0)." }
+0x21D850 = { name = "BuildDmaPacketSlot4A", note = "Writes DMA tag header (type 4) from DAT_0029cc00 and calls FUN_0021d470 (variant 4,0)." }
+0x21D8A8 = { name = "BuildDmaPacketSlot3B", note = "Writes DMA tag header (type 3) from DAT_0029cc10 and calls FUN_0021d470 (variant 3,0)." }
+0x21D900 = { name = "BuildDmaPacketSlot4B", note = "Writes DMA tag header (type 4) from DAT_0029cc10 and calls FUN_0021d470 (variant 4,0)." }
+0x21D958 = { name = "BuildDmaPacketSlot3C", note = "Writes DMA tag header (type 3) from DAT_0029cc20 and calls FUN_0021d470 (variant 3,1)." }
+0x21DA08 = { name = "BuildDmaPacketSlot3D", note = "Writes DMA tag header (type 3) from DAT_0029cc30 and calls FUN_0021d470 (variant 3,1)." }
+0x21DA60 = { name = "BuildDmaPacketSlot4C", note = "Writes DMA tag header (type 4) from DAT_0029cc30 and calls FUN_0021d470 (variant 4,1)." }
+0x2212C8 = { name = "SetVifFillDirect", note = "Stores replicated 8-bit pattern to _PTR_DAT_0029d130 and issues vifDirect with 6 quadwords." }
+0x223D58 = { name = "UpdateCarEffectSlots", note = "Iterates 128 car-effect slots, dispatches per-type effect update via FUN_00223b30, advances timers; called from drawCarEffects." }
+0x226298 = { name = "TransformMatrixAndSubmit", note = "Multiplies global matrix at 0x177f5e0 by input matrix, then submits via FUN_0021d3b8." }
+0x226398 = { name = "KickVifPacket", note = "Calls vifKick on a fixed packet address 0x28e730." }
+0x233A80 = { name = "UpdateTimedPhaseTask", note = "Per-frame task state machine: counts 60-frame phases, sets up draw state per phase, kills task on timeout." }
+0x235778 = { name = "InitGameStateBlock", note = "Zeroes 0x8cb0-byte state block, sets fields at +0x8004 and +0x8008=0x26." }
+0x236858 = { name = "UpdateRankingsAndAdvance", note = "Computes 8 score sums, sorts them, draws ranking rows and advances round state; kills task when done [inferred]." }
+0x236D28 = { name = "DrawRowsAndUpdateState", note = "Draws 8 rows of text/icon entries using per-row tables, toggles state byte at +0x25 when input bit 0x40 set [inferred]." }
+0x237080 = { name = "DrawEntryRowsForState", note = "Draws 8-entry rows for a state object, using lookup tables and FUN_00204568/FUN_00204310 draw calls [inferred]." }
+0x23C6B0 = { name = "FindIndexByMaskedByte", note = "Searches a byte table for an entry matching value (param3 mod param2 + base) with mask 0x7f; returns found index [inferred]." }
+0x2406E8 = { name = "EmptyStub", note = "Returns immediately; no-op." }
+0x241670 = { name = "EmptyStub2", note = "Returns immediately; no-op." }
+0x248FA0 = { name = "UpdateTaskTimerLimit", note = "Advances task timer by 8 per step up to 16, kills task on overflow; flag-dependent path [inferred]." }
+0x24E1A0 = { name = "UpdateCarControlState", note = "Large per-car update using gs_controls_car_object; calls physics/collision helpers and memsets temporaries [inferred]." }
+0x24E7D8 = { name = "CopyDialogueTextBounded", note = "Copies string with 2-byte escape handling up to a limit, NUL-terminates; dialogue text copy [inferred]." }
+0x24FC30 = { name = "LoadAndTransformVec4", note = "Loads 4 shorts into a stack vector, transforms via FUN_00272a28 and FUN_00272988 with global matrix." }
+0x24FC98 = { name = "ScaleShortByMatrix", note = "Loads one short into a vector, transforms via FUN_00272a28 and FUN_00272988, returns first component." }
+0x252540 = { name = "NormalizeQuatAndRotate", note = "VU0 quaternion helper: normalizes param (default identity), computes projection and rotation [inferred]." }
+0x257760 = { name = "BindAndCallRpcInit", note = "Binds SIF RPC 0x175e840 with key 0x1234567 and issues initial RPC call." }
+0x2577C0 = { name = "CallRpcCmd1", note = "Issues SIF RPC command 1 on service 0x175e840." }
+0x257800 = { name = "SendDialogueWindowRpc4", note = "Packs dialogue window/cursor addresses into RPC buffer and sends RPC command 4." }
+0x2578A8 = { name = "SendDialogueWindowRpc5", note = "Packs dialogue window/cursor addresses into RPC buffer and sends RPC command 5." }
+0x257950 = { name = "SendRpcWithStringArg", note = "Clears 0x40-byte RPC buffer, copies string argument via strcpy, sends RPC with dialogue state." }
+0x257A28 = { name = "SendMusicPlayRpc", note = "Same packing as SendRpcWithStringArg; called from gs_music_play_bgm to send BGM play RPC [inferred]." }
+0x257C68 = { name = "SendRpcCmd9Value", note = "Packs 12-bit value and pointer into RPC buffer, sends RPC command 9." }
+0x257D18 = { name = "SendRpcCmd9Pair", note = "Packs two 32-bit args into RPC buffer, sends RPC command 9." }
+0x257DD0 = { name = "SndRpcCmdA", note = "Stages 0x40-byte request from args (incl. window/cursor globals) and sends sound-engine RPC cmd 0xA; no reply. [inferred]" }
+0x257E80 = { name = "SndRpcCmdB", note = "Stages 0x40-byte request from caller-supplied stack tail and sends sound-engine RPC cmd 0xB; no reply. [inferred]" }
+0x258080 = { name = "SndRpcQueryCmd10", note = "Fills 0x40 send buffer from arg tail, sends RPC cmd 0x10 with 0x40 readback at 0x175f880; returns first dword. [inferred]" }
+0x258138 = { name = "SndRpcReadBlock1F", note = "RPC cmd 0x1F reads 0x40 bytes into 0x175f880 then copies all 64 bytes to caller's out struct. [inferred]" }
+0x258218 = { name = "SndRpcCmdCArgs", note = "Builds 0x40 request (dword0=0x3F1 plus 9 args from tail) and sends sound-engine RPC cmd 0xC; no reply. [inferred]" }
+0x258308 = { name = "SndRpcPlayOrStop", note = "Arg 0 (& 0x8000FFFF mask) -> RPC cmd 1 (stop all); nonzero arg staged as 0x40 request for RPC cmd 0xD (play). [inferred]" }
+0x2584B0 = { name = "GsSetupFrameContext", note = "Emit 3 packet items via FUN_002793D0 (codes 0x8050/0x8130/0x8070, ctx=arg&1); likely GS framebuffer/scissor setup. [inferred]" }
+0x2586A0 = { name = "SndRpcCmd22", note = "RPC cmd 0x22 with 0x40 request; count arg forced to 1 when zero; called from scene code. [inferred]" }
+0x258768 = { name = "SndRpcCmd24", note = "Stages 0x40 request whose first dword is the arg; sends sound-engine RPC cmd 0x24. [inferred]" }
+0x258960 = { name = "SndRpcCmd30", note = "Fire-and-forget sound-engine RPC cmd 0x30, no payload. [inferred]" }
+0x258B70 = { name = "SndRpcCmd36", note = "Fire-and-forget sound-engine RPC cmd 0x36, no payload. [inferred]" }
+0x258BB0 = { name = "SndRpcCmd37", note = "Fire-and-forget sound-engine RPC cmd 0x37, no payload. [inferred]" }
+0x258BF0 = { name = "SndRpcCmdCStruct", note = "Copies 56-byte struct (7 qwords incl window/cursor fields) to request buffer and sends sound-engine RPC cmd 0xC. [inferred]" }
+0x258CA8 = { name = "SndRpcCmdD", note = "Stages 0x40 request (first dword = arg) and sends RPC cmd 0xD; same opcode as play path of 0x00258308. [inferred]" }
+0x258D50 = { name = "SndRpcReadStatBlock", note = "RPC cmd 0xFFF0 reads 0x300 bytes to 0x175f880, copies 96 qwords to caller buffer (8-aligned fast path). [inferred]" }
+0x263710 = { name = "SeqIntroFadeTask", note = "Task initing 0x8CBC work buffer, plays BGM flag 0xA100201, state machine ramps a short via FUN_002080F8 then kills task on done. [inferred]" }
+0x2642B8 = { name = "SeqLongFadeTask", note = "Task inits 0x8CC0 buffer + BGM, state machine ramps 2 values (states 0-4), sets screen fade via FUN_002080F8, kills itself. [inferred]" }
+0x264CB0 = { name = "SubstituteNameTokens", note = "'$N' substitution: grabs name from FUN_0023DB00(0,0) and replaces the $N token in caller's text buffer. [inferred]" }
+0x265568 = { name = "HouseVisitedMenuTask", note = "Task building 0x1762400 menu inits house/set data, draws visited-house list from PTR table, edits current house/set via dpad, exits on btn. [inferred]" }
+0x2678E0 = { name = "KnockCollectMaskGates", note = "Queries 7 knock slots (0x5C,0x27,0x61,0x13,0x43,0x59,0x3B) and ORs result bits into caller mask[0]. [inferred]" }
+0x2679C8 = { name = "MailCollectMaskGates", note = "Queries 5 mail slots (0x5A,0x2C,0x11,0x2F,0xE) and ORs check bits (4/8/0x20/0x80/0x100) into caller mask. [inferred]" }
+0x267A80 = { name = "HintCollectMaskGates", note = "Queries 14 hint/GPS slots (d628/d778) setting bits across mask[0..4]; maps slot IDs to collection/hint flags. [inferred]" }
+0x269BD0 = { name = "FlagIndexGetNth", note = "Scans flag words (param_2<<5 bits); returns bit index of the Nth set flag, or -1; -1 count asks FUN_0024F3B8. [inferred]" }
+0x269C80 = { name = "FlagIndexBitsUpTo", note = "Rewrite of 0x00269BD0: counts set bits before global index param_3 and reports whether that bit is set. [inferred]" }
+0x26ABD0 = { name = "ApplyAdjusterOffsets", note = "Reads 0xC table type, applies signed deltas to item fields 0xB0/0xB2, flag bits adjust floats 0x90/0x94/0x98, rebuilds VU0 matrix. [inferred]" }
+0x26AD48 = { name = "DrawAdjusterDebug", note = "Text-dumps adjuster state: two shorts at 0xB0/0xB2/0xB4 and floats 0x90/0x94/0x98 via FUN_0027EEE0+FUN_00203A50. [inferred]" }
+0x26AE88 = { name = "ApplyAdjusterScales", note = "Applies scale ops (+1 / x399 when flags 2/8 set) to float fields 0x3C/0x15C/0x158/0x38 and prints result at 0x168. [inferred]" }
+0x26B018 = { name = "AdjusterMenuTask", note = "Task creating 0x32F8D0/E/F0 menu items, selects via FUN_00205C08; status 2 toggles 0x10000 mode + plays sfx 0x1A, 0 exits task. [inferred]" }
+0x26CF20 = { name = "BrowseItemsMenuTask", note = "Runs FUN_0026C588 then moves 2-at-a-time cursor over item count at task+0x26 with u/d buttons; exit btn X kills task. [inferred]" }
+0x26D108 = { name = "HouseEntryInitTask", note = "Computes work target via FUN_0023DB80 and pointer from gs_houses_residents table, sets 0x177EA5C, spawns tasks 0x20DC50/0x22C518. [inferred]" }
+0x26D880 = { name = "PrintDoorParams", note = "Decodes door struct: pos(0-2),scale with 32FB48 label, ypr shorts *0xB4/0x8000 deg, prints via FUN_0027EEE0/FUN_00203A50. [inferred]" }
+0x26DA90 = { name = "PrintDoorBase", note = "Dumps base struct to text: d 0x335630 = arg2, plus floats off param_1+0x30/0x34/0x38. [inferred]" }
+0x26DB80 = { name = "PrintCamPair", note = "Converts two floats via FUN_0027B7B0/FUN_0027EEE0 into text api calls 0x32FB78/0x32FB88 (camera near/far?). [inferred]" }
+0x26DC10 = { name = "PrintCamProj", note = "Dumps arg2 via 32FB98 plus param_1 via 0x335668 with size 0x20 - camera aspect/fov debug print. [inferred]" }
+0x26DC98 = { name = "PrintUiSlotN", note = "Sets UI text api slot: id param_1 via a0 335670 plus current via 0x33xx label, prints with size param_1<<3. [inferred]" }
+0x26DCF8 = { name = "PrintXyzRow", note = "Converts 4 args (id + x/y/z or w) via FUN_0027B7B0 into one 0x32FBA8 text api record of size 0x50. [inferred]" }
+0x26DDB0 = { name = "PrintXyzTable", note = "Rows table (stride 0x30) at param_1: for each of 4 rows prints 4 floats as one 0x32FBA8 record at base param_2<<3. [inferred]" }
+0x26DF30 = { name = "PrintVec2Short", note = "Prints 2 shorts from param_1 as one 0x32FBD0 record of size 0x10 at param_2<<3. [inferred]" }
+0x26DFB0 = { name = "PrintVec3Norm", note = "Writes 0x32FC08 (x,y,z) or normalized 0x32FBE0 (x,y,z,x/z,y/z) record for vec at param_1, size 0x10 at param_2<<3. [inferred]" }
+0x2000B8 = { name = "Ps2ExitThreadId", note = "Tiny stub: invokes PS2 syscall 4 (ExitThreadId) and returns; called from 0x0027DB20." }
+0x2000C0 = { name = "Ps2InitGsDoubleBuffer", note = "Executes syscall 0x23 then resets GS and sets double buffers: 640x448 (arg 0) or 512x256, storing DMODE2/6 words. [inferred]" }
+0x2001B8 = { name = "Ps2InitSystem", note = "Prints E-game banner, reboots IOP via image 0x2E9A58, resets SIF/CD/DMA, loads 7 file modules 0x2E9A70-0x2E9B00, inits MC+PAD, calls 0x00226398." }
+0x202020 = { name = "GsDrawDigitsCounter", note = "Writes GS prim packets into DMA buffer to render number param_1 as 200 (digit%10<4) or 220 (else) sprites at x-2,y via FUN_002063C8. [inferred]" }
+0x202D10 = { name = "DrawDialogTextLine", note = "Draws text line in dialog packet chain: 3.5 sprite slabs via FUN_002063C8/C0/C8, shadow via FUN_00201FD0, then glyph loop FUN_002017B0 over chars incl wide-lead bytes. [inferred]" }
+0x204A00 = { name = "UiDestroyRemovedNodes", note = "Walks linked list from param_1+0x10: for nodes with flag bit1 calls destructor fn-ptr (+0x2C), frees child object fields 0x10/0x14 via FUN_00205018 and unlinks node. [inferred]" }
+0x204C10 = { name = "ClearTaskPool", note = "Clears active and linked-task fields for 48 fixed task slots." }
+0x204D20 = { name = "InitializeTask", note = "Initializes a task record with supplied fields and clears remaining state." }
+0x204D60 = { name = "DestroyTaskRecord", note = "Runs task cleanup callback, recursively releases linked tasks, and clears the task reference." }
+0x204ED0 = { name = "SetTaskFlag", note = "Sets bit 1 in a task's status byte." }
+0x204EE0 = { name = "SetTaskListFlag", note = "Sets bit 1 on each task in a linked list." }
+0x204F18 = { name = "ClearTaskListFlag", note = "Clears bit 1 on each task in a linked list." }
+0x204F58 = { name = "ClearTaskPoolFlag", note = "Clears bit 1 on each of 48 pooled task entries." }
+0x205018 = { name = "DestroyTaskTree", note = "Invokes cleanup callback, recursively destroys child/sibling tasks, and clears task state." }
+0x205088 = { name = "UpdateMenuFlowTask", note = "Updates input/menu state and spawns the task for the selected menu mode." }
+0x2052D0 = { name = "StartMenuFlow", note = "Spawns initial menu tasks, configures the task callback, and resets menu state." }
+0x205AD0 = { name = "CenterRectangle", note = "Positions a rectangle within screen bounds based on alignment flags and its width/height." }
+0x205DA0 = { name = "LayoutTextItems", note = "Measures and lays out a bounded sequence of text items, updating positions and item state." }
+0x205FB0 = { name = "MeasureTextWidth", note = "Recursively sums glyph widths for a text sequence, skipping marked entries." }
+0x206D28 = { name = "NavigateGridSelection", note = "Moves a selected grid index according to directional flags and wraps within grid dimensions." }
+0x206F28 = { name = "IntersectPointWithMesh", note = "Tests a point against mesh triangles and records the nearest qualifying intersection." }
+0x207280 = { name = "FindWorldMeshIntersection", note = "Adjusts a world position across map sectors and tests candidate meshes for intersection." }
+0x207B20 = { name = "CountSetBits", note = "Returns the population count of a 32-bit value." }
+0x207EC8 = { name = "TransformRectangle", note = "Builds rectangle bounds and applies a matrix/vector transform." }
+0x207F38 = { name = "WrapCoordinate", note = "Wraps a floating-point coordinate across configured lower and upper bounds." }
+0x207F88 = { name = "BuildTransformMatrix", note = "Constructs a transform matrix from basis vectors using VU matrix operations." }
+0x208008 = { name = "BuildYawTransform", note = "Builds a matrix from a direction vector and copies a translation vector." }
+0x208080 = { name = "ApplyMatrixRotation", note = "Builds a rotation matrix and multiplies it into the supplied matrix." }
+0x2080D8 = { name = "SelectMeshIntersectionRoutine", note = "Selects the mesh intersection function based on a mode flag." }
+0x2081D0 = { name = "FindSetBitRank", note = "Returns the zero-based rank of a set bit, or -1 if the requested bit is clear." }
+0x208228 = { name = "FindNthSetBit", note = "Returns the bit index of the requested set bit, or -1 when absent." }
+0x2083C0 = { name = "AdvanceTimedTask", note = "Advances a timed task callback and kills the task when its timer reaches its terminal value." }
+0x208428 = { name = "PlayTaskSound", note = "Plays a task-associated sound using its stored sound identifier." }
+0x2084D0 = { name = "TestMeshIntersection", note = "Tests candidate triangles and updates the closest intersection result." }
+0x2086B0 = { name = "InitializeMenuPanelTask", note = "Initializes a menu panel task and sets up its transition state." }
+0x208848 = { name = "RunMenuPanelTask", note = "Updates menu panel state, spawning sub-tasks and applying transitions." }
+0x209848 = { name = "RunMenuSelectionTask", note = "Processes menu selection and updates task/input state." }
+0x209CB0 = { name = "RunMenuNavigationTask", note = "Processes menu navigation state and updates menu presentation." }
+0x20A150 = { name = "UpdateMenuOptionTask", note = "Updates a menu option task and dispatches its transition state." }
+0x20A2B0 = { name = "DispatchMenuTask", note = "Selects and spawns the next menu task based on task and mode state." }
+0x20A520 = { name = "UpdateMenuConfirmTask", note = "Spawns a confirmation task and processes its completion state." }
+0x20A580 = { name = "UpdateMenuScreenTask", note = "Starts a screen task and advances its timer/transition state." }
+0x20A660 = { name = "UpdateMenuInputState", note = "Updates menu input state and associated option records." }
+0x20A8A8 = { name = "ReadPadState", note = "Reads controller state and updates the corresponding input data." }
+0x20AB10 = { name = "UpdateControllerInput", note = "Processes controller input and updates shared input state." }
+0x20CC30 = { name = "CheckInputMapping", note = "Checks a controller input mapping for the selected input mode." }
+0x20CD10 = { name = "UpdateInputMapping", note = "Updates input mapping state according to the active controller mode." }
+0x20CDC0 = { name = "DispatchInputMapping", note = "Dispatches input processing according to the active controller mapping mode." }
+0x20D008 = { name = "HandleInputEvent", note = "Processes an input event and updates associated state." }
+0x20DF98 = { name = "UpdateInputDeviceState", note = "Updates input device state using shared controller/device data." }
+0x20E018 = { name = "ClearInputTransientState", note = "Clears transient input state when the shared input mode is inactive." }
+0x20E1B8 = { name = "AbortCdOperation", note = "Clears flag at DAT_00333370 and calls sceCdBreak if busy flag bit 0x8000 is set in DAT_003356c0." }
+0x20E708 = { name = "UpdateTownBlockTasks", note = "Updates town/world block tasks based on active block index, spawning block entities or destroying inactive blocks." }
+0x20EBE8 = { name = "SpawnGameViewTasks", note = "Spawns HUD and camera viewport tasks for 1-player (mode 0/2) or 2-player split screen (mode 1) [inferred]." }
+0x20ED30 = { name = "SpawnRaceRivalTasks", note = "Spawns rival car tasks for race modes and populates race participant slot table DAT_01787008 [inferred]." }
+0x20F330 = { name = "ResetRaceRanks", note = "Resets race participant slot status and adjusts car finish positions against eliminated ranks into DAT_01787016 [inferred]." }
+0x20F3B8 = { name = "UpdateRaceGameTask", note = "Main per-frame task handler for race mode; updates day/night lighting, checks pause/finish state, and spawns exit transitions." }
+0x20F950 = { name = "StartRaceModeTask", note = "Initializes race mode: sets race course table, spawns HUD, rivals, and environment tasks, and assigns race update callback." }
+0x210158 = { name = "SpawnTownEntities", note = "Spawns resident and landmark tasks for a town based on resident table pointers and progress state [inferred]." }
+0x210430 = { name = "StartTownModeTask", note = "Sets town mode state, spawns viewport HUD, town block manager, player car, and sound tasks [inferred]." }
+0x2105B8 = { name = "UpdateTownExplorationTask", note = "Main loop task callback for town exploration; updates day/night time, checks mail, dialogue, shop, and race entry states." }
+0x211170 = { name = "UpdateQuickRaceMenuTask", note = "Handles menu flow and race selection for Quick Race mode, spawning selection UI and launching the race [inferred]." }
+0x211320 = { name = "UpdateTwoPlayerMenuTask", note = "Handles menu flow for 2-player race mode, setting up player selections and launching 2-player race task [inferred]." }
+0x2114E0 = { name = "UpdateTimeOfDayCounter", note = "Increments and wraps the 24-hour time-of-day tick counter at offset +0x14, updating DAT_00335730 if flag 0x1000 is set." }
+0x211708 = { name = "SpawnTownDialogueTasks", note = "Spawns resident dialogue and camera tasks for current town resident or town center [inferred]." }
+0x211808 = { name = "StartTownExplorationTask", note = "Initializes town resident tasks and sets task callback to UpdateTownExplorationTask (FUN_002105b8)." }
+0x211948 = { name = "FadeOutMenuTask", note = "Advances a screen fade step by calling FUN_002080f8, and notifies parent task before terminating at step 0x40." }
+0x2119A8 = { name = "DrawMenuGridBorder", note = "Draws procedural grid borders, cell dividers, and frames for menu layouts using 2D primitive packets." }
+0x211F68 = { name = "DrawMenuListItems", note = "Draws menu text labels and options (e.g. Pause menu items) positioned within menu grid cells." }
+0x212190 = { name = "DrawMenuGridBackground", note = "Draws tiled menu background panels according to grid style and dimensions specified in param_3[4]." }
+0x212720 = { name = "DrawMenuCursorAndIcons", note = "Draws menu cursor arrows with blinking animation and item icons corresponding to selected grid elements." }
+0x212A00 = { name = "InitMenuElementLayout", note = "Populates element layout positions and selection state for a vertical list of menu items." }
+0x212AC8 = { name = "UpdateVerticalMenuNavigation", note = "Updates vertical menu cursor navigation, handles scrolling, plays navigation sound effects, and steps transition animations." }
+0x2135C8 = { name = "HandleConfirmationMenuInput", note = "Handles navigation, confirmation, and cancel input for a three-option dialog menu [inferred]." }
+0x2137B0 = { name = "HandleAudioSettingsMenuInput", note = "Handles audio options menu input, updating BGM and sound effect volume levels and settings [inferred]." }
+0x213A78 = { name = "HandleToggleMenuInput", note = "Manages menu transition states and toggles status bit 0x80 on selection or cancellation [inferred]." }
+0x213C40 = { name = "GetControllerButtonConfig", note = "Converts controller button bindings from player state offset +0x12e8 into configuration index values." }
+0x214078 = { name = "SetControllerButtonConfig", note = "Writes configured button assignments from menu selection indices back into player control mapping fields." }
+0x214220 = { name = "ResetControllerConfigDefaults", note = "Resets controller button bindings to defaults, checks for mapping collisions, and updates config fields [inferred]." }
+0x214470 = { name = "HandleControllerConfigMenuInput", note = "Handles navigation and button remapping for controller configuration menu, verifying duplicate assignments." }
+0x214AD0 = { name = "UpdatePauseMenuTask", note = "Updates pause menu navigation, processes selected menu option, and renders menu background, borders, and items [inferred]." }
+0x214EF8 = { name = "UpdatePauseSubmenuTask", note = "Handles navigation and renders dialog layout for a secondary pause submenu screen [inferred]." }
+0x215220 = { name = "UpdatePauseConfirmDialogTask", note = "Updates input and renders dialog frames and options for pause menu confirmation prompt (restart/quit) [inferred]." }
+0x2156D0 = { name = "UpdateAudioSettingsMenuTask", note = "Updates audio settings menu input and renders volume sliders, time of day display, and sound option controls [inferred]." }
+0x2161E0 = { name = "UpdateGarageMenuTask", note = "Displays garage customization items, item descriptions, and player travel mileage in pause menu [inferred]." }
+0x216E00 = { name = "UpdateWorldMapMenuTask", note = "Displays the pause menu world map and renders the player position marker icon at converted world coordinates." }
+0x216FF8 = { name = "InitPauseMenuOptions", note = "Initializes the pause menu state structure and populates available menu option lists based on feature unlock flags." }
+0x2173D0 = { name = "PromptConfigConfirmationTask", note = "Displays a confirmation popup dialog with options and returns the selected index to the parent task." }
+0x2175D0 = { name = "TestCarCollisionBox", note = "Transforms 4 collision check points of one car into another car's frame and tests against bounding volume extents." }
+0x217830 = { name = "HandleCarCollisionResponse", note = "Triggers collision rumble, collision sound effect, and impact recoil or interaction triggers between two cars." }
+0x2179D8 = { name = "UpdateCarCarCollisionsTask", note = "Iterates over all car pairs, performs broadphase and narrowphase collision checks, and applies impact physics and reactions." }
+0x217C68 = { name = "UpdateCarTireSound", note = "Updates tire skid and surface friction sound effects and pitch based on vehicle speed, slip, and surface type." }
+0x217F10 = { name = "UpdateContinuousSoundEffect", note = "Manages start, loop, and stop sound playback for continuous audio effects (horn or boost) with countdown timer [inferred]." }
+0x2180C0 = { name = "LoadCarPerformanceSpecs", note = "Loads equipped parts performance parameters (gears, engine, tires, brakes) into car physics state fields." }
+0x2182B0 = { name = "SpawnCarAtDoor", note = "Calculates initial spawn position, ground elevation, and heading angle for a car at a building entrance door." }
+0x218458 = { name = "SpawnCarEntityTask", note = "Initializes car entity state, physics matrix, equipped parts, spawn position, and assigns car update callback FUN_0021ba70." }
+0x218EE0 = { name = "AdvanceVehicleMotion", note = "Advances car odometer (+0x1d0 cap 10000) and arc dist (+0x1bc) by speed; writes world delta to out vec; sets state flag bit1 [inferred]" }
+0x2194B8 = { name = "SteerHeadingVector", note = "Rotates dir vec about Y by angle, shrinks X/Z by 1/1.0625 with +/-0.125 pivot by flags 0x40/0x80, lifts Y, normalizes [inferred]" }
+0x219660 = { name = "ApplyCollisionImpulse", note = "Maps collision code 0-15 to velocity/yaw impulses in car frame and repositions; code 15 = crash: prints, sets flag, rumble [inferred]" }
+0x219CB0 = { name = "TestQuadLateralMask", note = "Per quad offsets verts by plane origin and rotates to car frame; returns bitmask 1/2/4/8 of lateral band when height/z tests pass [inferred]" }
+0x219ED8 = { name = "QueryCarSurfaces", note = "Rotates by car yaw, bitmask-tests the car's surface quad list via 0x219cb0; special type loops 26 extra parts [inferred]" }
+0x21A088 = { name = "UpdateSteeringDamping", note = "Rate-limits steering cmd (+0x1d2, clamp +/-512), integrates yaw offset (+0x1d6), applies speed-scaled centering clamp [inferred]" }
+0x21A990 = { name = "AcquireVehicleInput", note = "Routes player gs_controls_player_control or AI fnptr DAT_003356dc, keeps input ring buffer, tops nitro +0x23c [inferred]" }
+0x21ACD0 = { name = "UpdateSuspensionFlex", note = "Advances suspension floats (+0x80,+0x88) from speed/arc via per-mode constants; sets +0x84 lean from steering (+0x1ce) [inferred]" }
+0x21AF28 = { name = "UpdateWheelSuspension", note = "Per wheel compares contact height vs travel (+0x114), updates spring/damping, starts rumble; returns contact bits [inferred]" }
+0x21B3D0 = { name = "ResolveGroundContact", note = "Transforms 7 wheel offsets to world, ray-tests terrain per wheel, runs suspension 0x21af28, sets airborne/landing [inferred]" }
+0x21BA70 = { name = "UpdateVehiclePhysics", note = "Master vehicle tick: input, ground-contact, surface, collision substeps, velocity drag/clamp, commits world position [inferred]" }
+0x21C6A0 = { name = "DecomposeWorldPosition", note = "Normalizes packed fixed-point world pos into in-cell range, writes carry/base to out ptrs, returns grid sector index [inferred]" }
+0x21C728 = { name = "ToRelativeVec4", note = "Builds float vec4(x,y,z,1) from fixed-point position minus reference origin, wraps at 27 bits, scales by world-unit constant DAT_00332c1c" }
+0x21C7F0 = { name = "FixedPosToFloatVec4", note = "Converts packed fixed-point position struct (x, y, z+carry bit) to float vec4 with w=1.0 using scale DAT_00332c20" }
+0x21C880 = { name = "GetGridCellIndex", note = "Returns 2-bit grid cell selector (0-3) from sign bits of fixed-point x and z fields of a position struct" }
+0x21C8D0 = { name = "ComputeGridCellIndex", note = "Same grid cell index as 0x21c6a0 computed directly from raw fixed-point x and z values [inferred]" }
+0x21C928 = { name = "StoreIndexedPosition", note = "Writes scaled int3, float3 and a 16-bit tag into slot (stride 392B) of global race-object position table indexed by param_4 [inferred]" }
+0x21C998 = { name = "ResetVehicleState", note = "Zeroes car runtime state (velocity +0xf0, suspension/steering accumulators, odometer) and resets damping scalars to 0x1000" }
+0x21CBC8 = { name = "SaveControlStateForReplay", note = "Copies the 15KB control-state table into replay scratch buffer and rewinds three replay stream pointers for recording [inferred]" }
+0x21CCB8 = { name = "RestoreControlStateFromReplay", note = "Prints replay buffer sizes, restores control-state table from replay scratch memory and rewinds stream pointers [inferred]" }
+0x21CE08 = { name = "SelectScene3dHandler", note = "Installs one of two scene-3D handler entry points (0x21ce48 or 0x21cf80) into gs_game_scene3d_handler based on a flag" }
+0x21CE28 = { name = "SetAICarController", note = "Installs AI car-control fn ptr DAT_003356dc (used by vehicle input dispatch 0x21a990); defaults to 0x21d0b8 when passed null" }
+0x21D0C0 = { name = "TestSegmentInBoxWindow", note = "Clips a segment between two 3D pts to a +/-110 X window, tests clipped Z span against +/-110 of param_2; returns visibility [inferred]" }
+0x21D2D8 = { name = "TransformVecByF15Matrix", note = "VU0: transforms f15 fixed-point vector by 4x4 f15 matrix rows 0-2 (no translation), writes fixed-point result [inferred]" }
+0x21D310 = { name = "VecSubtractAndLength", note = "Subtracts two f15 fixed-point vectors and stores 3D Euclidean length of the difference in result vector's w component [inferred]" }
+0x21D358 = { name = "GetSpeedFromF15Vector", note = "Converts f15 fixed-point 3D vector to float and returns its length scaled by 216.0 (car speed in display units) [inferred]" }
+0x21DC18 = { name = "ComputeChaseCameraBasis", note = "Smoothed chase-cam offset from car yaw and cam pitch with per-slot spring limits; outputs 2 normalized basis vectors [inferred]" }
+0x21E070 = { name = "ResolveCameraTerrainCollision", note = "When camera points (+0x100/+0x110) clip terrain per height query, steps camera pitch +/-128 and rebuilds camera until both clear ground" }
+0x21E328 = { name = "CycleCameraPresetState", note = "Cycles camera state +0x25 mod 3, picks matching preset from 24-entry table and relaunches task 0x238b18 with its index [inferred]" }
+0x21E4D8 = { name = "InitCameraTaskState", note = "Camera boot handler: spawns cam task 0x238b18 or loads preset type 0x10/0x20 from table, then chains next handler fn (+0xc) [inferred]" }
+0x21E690 = { name = "RunCarCameraTask", note = "Per-frame car camera task: selects target and preset, eases FOV, computes chase basis, builds camera, runs terrain collision [inferred]" }
+0x21EC58 = { name = "RunCameraZoomTransition", note = "Zoom transition: ramps zoom short +0x177ea06 by 512/frame until counter +0x8 hits 0x80, then resumes main cam handler [inferred]" }
+0x21ED90 = { name = "CameraWaitOrCutsceneState", note = "Wait state: resumes main update when player flag clears, else builds fixed scene cam (types 0x17/0x18) from stored matrices [inferred]" }
+0x21EE98 = { name = "SwitchCameraPresetType10", note = "After cam timer +0x8 hits 0xc0, loads preset type 0x10 from table for this player and chains handler to 0x21ef98 [inferred]" }
+0x21EF98 = { name = "SwitchCameraPresetType20", note = "After cam timer +0x8 hits 0xc0, loads preset type 0x20 from table for this player and chains handler to 0x21ee98 [inferred]" }
+0x21F098 = { name = "BuildMenuSceneCamera", note = "For scene 0x16 eases spin angle DAT_0029ccd0 and zoom from state then builds fixed menu cam; else uses stored matrix ptrs [inferred]" }
+0x21F198 = { name = "ApplyFreeCameraInput", note = "Moves free-cam by tuning deltas per button bits (0x1/4/0x1000-0x8000), scales zoom, adjusts pitch/yaw when mode is 7 [inferred]" }
+0x21F340 = { name = "ComposeCameraMatrix", note = "Builds 4x4 cam matrix from euler angles at src+0x14, premultiplies optional matrices, writes result plus 4 vectors [inferred]" }
+0x21F450 = { name = "BuildCameraViewMatrices", note = "Builds camera basis from forward/up vectors and emits frustum/projection matrices with X axis mirrored into output matrices [inferred]" }
+0x21F910 = { name = "SetViewDistanceGlobals", note = "Writes two float view-distance globals (DAT_003356e0/e4) set from camera modes and the options draw-distance page [inferred]" }
+0x21FAE8 = { name = "LoadCameraPreset", note = "Copies the 32-byte camera preset record at index param_2 (stride 32) from table 0x29ce00 into the camera state slot [inferred]" }
+0x21FB20 = { name = "GetCarSlotEntry", note = "Returns pointer into a 0x20-byte stride base (DAT_0029ce00) indexed by arg; used as a per-car slot accessor. [inferred]" }
+0x2201C0 = { name = "DrawFieldTerrainTiles", note = "For drawSceneField: streams 5 neighbour tile GS tasks by FUN_0021c8d0, updates DAT_003335b8 tile-visible flags, then debug-overlays regs/coordinates. [inferred]" }
+0x2207D0 = { name = "DrawSceneArcRibbonFaded", note = "For drawSceneCloudHill/drawSceneField: maybe-draws an arc ribbon via drawArcRibbon then fades ribbon-color toward ~0 by distance bands (60<<band RGB). [inferred]" }
+0x2213E0 = { name = "renderInitNoOp", note = "Empty stub called from renderInit; kept as a seam/no-op initializer. [inferred]" }
+0x2230C8 = { name = "UploadPaintBgColors", note = "Loads 4 RGBA paintIntensity entries indexed from RAM palette bytes and vifUploadColours them (background swap). [inferred]" }
+0x223150 = { name = "UploadPackedColors", note = "Decodes 6 luminance indices from packed 16-bit mask, expands to paintIntensity RGBA, then vifUploadColours two 12-byte halves. [inferred]" }
+0x223200 = { name = "ResetShowroomLighting", note = "Selects 5-cycle DMA, uploads 16-light At16 env, and resets DAT_003356e8 (showroom render init step). [inferred]" }
+0x223238 = { name = "DrawShowroomCarModel", note = "Uploads light matrix + object matrix + GIF regs for a car and vifCallModel into &carModels[idx*6]+0x10; per-model showroom drawer. [inferred]" }
+0x223410 = { name = "InitCarRenderRegs", note = "Zeroes 0x800 bytes (DAT_0177eb10) then writes four GIF2 mscal paths (0x2b26/0x2b66) — car-render registers template. [inferred]" }
+0x223490 = { name = "UploadCarColorPalette", note = "Loads two colours from 0x29d2d0/0x29d2e0 and kicks a 2-cycle DMA (texture/colour palette apply for car). [inferred]" }
+0x2236A8 = { name = "UploadCarAt16Env", note = "Loads At16 light env from 0x177f5e0 and starts a 4-cycle DMA (car env re-upload). [inferred]" }
+0x2236D8 = { name = "DrawCarVariant0", note = "Trivial wrapper: drawCar(0,0) — used as the \"no animation\" car draw path. [inferred]" }
+0x2236F8 = { name = "DrawCarShowroomRig", note = "Gets showroom view (FUN_00226180), centres rig at (0,-0.5,0) via FUN_00273038, then drawCarShowroom — the curated showroom pose. [inferred]" }
+0x223760 = { name = "SelectCarAttachmentPoint", note = "Selects an attachment-point xy (from arg's wheel/bumper fields) by case on arg3, then vu0ApplyMatrix through view matrix param. [inferred]" }
+0x223810 = { name = "MakeVifCall15xGif", note = "Builds a 64-bit VIF call: reg 0x1be4 + 10*idx and reg 0x1bec + 10*idx inside an MSCA-like GIF packet. [inferred]" }
+0x224068 = { name = "SpawnCarDustPuffs", note = "Per frame advances a 0..0x20 cycle, scatters up to 2 dust puffs via FUN_00223b30 (effect 1) at world points, registers slot at DAT_0172ff70 if 2 units away. [inferred]" }
+0x2243E0 = { name = "SpawnCarSmoke", note = "Lifecycle 0..0x10; emits smoke puff (effect 2) via FUN_00223b30, scales by speed-FUN_0021d358/300 (heat), with vu0MulMatrix-bias on rig. [inferred]" }
+0x2246C0 = { name = "SpawnCarSparks", note = "Cycle 0..0x10; emits spark (effect 3) if 1.25 units from registered slot; same rig-bias+heat scaling as sparks generator. [inferred]" }
+0x2249B8 = { name = "SpawnCarDebrisCycle", note = "Each call rolls 4 random 0..1 offsets to add a new \"type-8\" emitter (rotational debris) into slot table; count/speed scale with car state. [inferred]" }
+0x224CD0 = { name = "SpawnCarEmitterEntry", note = "Allocates the next free slot in DAT_0172ff70 (DAT_0172ff7c==0 enables), seeds it with arg3/arg4 (type 8, subtype 2), marks cls flag. [inferred]" }
+0x224EC0 = { name = "AdvanceCarEmitterStep", note = "Frame-step a slot's lifecycle: writes ty/tz via vu0ApplyMatrix, may advance type-7 puff param, registers new slot if free. [inferred]" }
+0x225390 = { name = "AdvanceCarEffectSlot", note = "Ticks stored effect slot (state byte controls two sub-animations with type-specific falloff); updates DAT_0172ff7c and rtt param. [inferred]" }
+0x225588 = { name = "ResetCarEffectSlots", note = "Zeroes effect slot tables (DAT_0172ff70, DAT_01730770, DAT_017307f0) — render-init clear. [inferred]" }
+0x225790 = { name = "UpdateSceneLightsAndFog", note = "Sets fog/sky distance+colour via scene enum, uploads light matrix and 3 light-pair matrices from tod table; called by many render scenes. [inferred]" }
+0x226058 = { name = "ScaleCarLightMatrix", note = "Per render: scales rows of the (param_2) light matrix by a fading param (clamped 0..1.25) and re-uploads the light matrix to VU0. [inferred]" }
+0x226180 = { name = "GetSceneCamLookatIndex", note = "Returns the active CAM lookat points table: 1=>&DAT_0029e950, else default &DAT_0029e9b0 — pointer getter for the cars/props rig. [inferred]" }
+0x2262C8 = { name = "GetSceneFogParamsPtr", note = "Returns &DAT_0177f730 — fog distance param pointer for scene rending. [inferred]" }
+0x2262D8 = { name = "SetDrawSkyColours", note = "If car type at param_2+0x22 not in {-1,0x11,0x22}, returns 1.0 RGBA; else writes scaled DAT_0177f754..56 floats → sky-dome colour choice. [inferred]" }
+0x227380 = { name = "MemcardChooserDialogHandler", note = "State machine over dozens of dialog phase IDs (0..0x1f): loads text labels into a chooser (FUN_002058a8) by enum, advances phases or marks confirm/cancel. [inferred]" }
+0x2277B0 = { name = "InitSaveSlotDefaults", note = "Memsets a 0x3448-byte save slot and seeds its action-map/flags/limits/strings and 2 sub-tables (UnnamedRacer + gs_locations_table prefix). [inferred]" }
+0x227B28 = { name = "InitPlayerSlotStrings", note = "Builds \"PLAYER 1\"/\"PLAYER 2\" 8-byte names and several control-flag bytes for the player slot block at DAT_0177fd8c. [inferred]" }
+0x227C68 = { name = "InitControlsBindings", note = "Bootstraps control pads remap/wpad tables via FUN_0023c418, writes pre-canned bit values into the bindings array, and pre-registers 0x80 phases via FUN_0023df38. [inferred]" }
+0x227F90 = { name = "DrawSaveSlotEntry", note = "Draws text rows for one save listing (player name, track, time, free-blocks) using FUN_00204310/FUN_00202150 with row offset param_2. [inferred]" }
+0x2280D8 = { name = "SaveSlotConfirmDialog", note = "Phase handler for the save-confirmation dialog (overlay choose): prompts overwrite question via FUN_002058a8, draws save preview via FUN_00227f90, completes or cancels. [inferred]" }
+0x2282C0 = { name = "MemcardGetInfoTask", note = "sceMcGetInfo async wrapper: on phase 0 kicks sceMcGetInfo; waits via sceMcSync, classifies type/files into a result byte; timeouts abort. [inferred]" }
+0x2283E0 = { name = "MemcardReadFlushHandler", note = "Async sceMcSync handler: branches on size error vs ok; on success dispatches \"Close\"/\"Done\" diagnostic strings and notifies caller. [inferred]" }
+0x228510 = { name = "MemcardReadSlotTask", note = "Opens RDONLY via sceMcOpen then issues sceMcRead into the per-slot progress buffer (0x3448 bytes); on result, chains to FUN_002283e0. [inferred]" }
+0x228708 = { name = "MemcardCreateSlotTask", note = "Multi-step memcard-create state machine (mkdir → icon.sys → choroQ.ico → save file), writing icon/header/save blocks via sceMcOpen/Write/Close. [inferred]" }
+0x228B10 = { name = "LoadSaveSlotTask", note = "Async state machine that wraps MemcardGetInfo (0x2282c0) followed by MemcardReadSlot (0x228510) and the save-confirm dialog (0x2280d8) — load selected slot. [inferred]" }
+0x228D10 = { name = "ShowSaveLoadSpinner", note = "Spinner/dialog phase that shows localized \"Loading...\" text per language and transitions into FUN_00228b10 once confirmed. [inferred]" }
+0x228F40 = { name = "LoadOrCreateCardSlotTask", note = "State machine: probes slot occupancy (info+read), then dispatches between overwrite/create/load paths via FUN_00227380 chooser and kill targets. [inferred]" }
+0x2291C8 = { name = "CreateOrOverwriteSlotTask", note = "Full memcard-create sub-flow with overwrite-support: spawns info/read/create (0x28708) and confirm (0x280d8) tasks based on per-byte sub-status. [inferred]" }
+0x229538 = { name = "ShowSaveCreateSpinner", note = "Spinner/dialog phase with localized \"Saving...\" prompt that transitions into FUN_002291c8 once the user confirms. [inferred]" }
+0x229758 = { name = "CommitSaveSlotTask", note = "Copies slot buffer to RAM staging (DAT_00110000) on entry, then asynchronously calls FUN_002291c8 with packed slot index, copies back on finish. [inferred]" }
+0x229AF8 = { name = "MemcardSpaceCheckDialog", note = "Inserts localized prompts (\"Memory card 8MB... is not inserted\", \"Do you want to start?\") via FUN_002058a8 and chains to FUN_0022a320 based on result code/state. [inferred]" }
+0x229F20 = { name = "InitTuningConstants", note = "Writes ten fixed u16 tuning constants into offsets 0x12e8-0x12fa of the passed object. [inferred]" }
+0x229F70 = { name = "SelectProgressSlot", note = "Points gs_progress_ram_address and DAT_017804d0[slot] at the slot's buffer from table PTR_DAT_002ed724." }
+0x229FD8 = { name = "InitProgressRamDefaults", note = "Initializes progress/save state: resets two subsystems, sets counter 1000, copies 150 slot pointers, sets gs_progress_ram_address." }
+0x22A050 = { name = "RunConfirmDialogTask", note = "Menu task: first tick spawns a UI panel and clamps two globals to 3; later ticks poll it and on success kill the task. [inferred]" }
+0x22A168 = { name = "MemoryCardOpenWriteTask", note = "Memory-card step: opens the card file via sceMcOpen; on error reports the code and kills the task, else installs the next handler." }
+0x22A218 = { name = "FormatMemoryCardTask", note = "Memory-card step: draws a dialog, runs sceMcFormat then sceMcSync, reports the result to the parent and kills the task." }
+0x22A2F8 = { name = "CompleteTaskSuccess", note = "Trivial stub: sets the parent's done flag and result 1, then kills the current task." }
+0x22A320 = { name = "RunCardOpSequenceTask", note = "Sequencer: spawns sub-task 0x2282c0, maps its result (1->1, other->2) to the parent, or spawns 0x228510 on result 2. [inferred]" }
+0x22A408 = { name = "ApplyMotionClipFrame", note = "Steps animation clip param_3 by a time delta, accumulating rotation deltas and rebuilding the transform matrix; 0 ends the clip." }
+0x22A6B8 = { name = "UpdateAnimationPhaseMachine", note = "Drives clip playback via FUN_0022a408, tweens spin counters, plays SE 0x35/0x8035 and advances the phase byte at +0x27. [inferred]" }
+0x22ABA0 = { name = "AdvanceAnimationPhaseState", note = "Transitions on mode word +2 and phase +0x27, resets phases, rebuilds matrices and plays SE 0x34/0x35. [inferred]" }
+0x22AD70 = { name = "ClassifyObjectContext", note = "Classifies an object from bytes at +0x21/+0x23 and a field at +0x20, returning codes 0-5. [inferred]" }
+0x22BB88 = { name = "RunSaveProgressTask", note = "Writes course/progress records to the save buffer, spawns follow-up tasks, rebuilds a menu panel, prints Acc/Mue debug. [inferred]" }
+0x22BFD0 = { name = "RunSceneIntroTask", note = "First tick sets up transforms, camera, light and VIF upload; later ticks render and finish on input bits 0x50. [inferred]" }
+0x22C280 = { name = "RenderShowcaseView", note = "Initializes object matrices, camera and light, uploads via VIF and renders the model with mode param_3." }
+0x22C418 = { name = "RunFadeOutWaitTask", note = "Raises a fade flag via FUN_002080f8 and sets bit 0x400000; past tick 63 with input idle it finishes with result 5." }
+0x22C4A8 = { name = "RunFadeHoldTask", note = "Sets the fade flag and bit 0x400000 while tick is 0 or input is active, unless tick equals 64, then kills itself. [inferred]" }
+0x22C518 = { name = "StartCourseEventTask", note = "Probes FUN_0023cd58 for an unlock flag, installs handlers 0x22aeb0/0x22c630, resets the tick and spawns task 0x208270. [inferred]" }
+0x22C5F0 = { name = "FinishTaskOnInputIdle", note = "When controller state +0xf is zero, sets the parent's done flag/result to 1 and kills the current task." }
+0x22C630 = { name = "PlayEventSoundStub", note = "One-line handler that plays sound id 0x8035 via FUN_00258e50." }
+0x22C8A0 = { name = "RunSelectionMenuTask", note = "Builds a menu of up to 10 unlocked progress entries, polls it, then reports the chosen index (SE 0x1a) or cancel (0x1b). [inferred]" }
+0x22CA28 = { name = "RunCourseSelectMenuTask", note = "Scans 20 (area,course) pairs, builds a bitmask of available courses, shows them by name and returns the chosen entry. [inferred]" }
+0x22CD38 = { name = "RunCourseSelectHubTask", note = "First tick builds camera/light and music, then dispatches menu choices to 0x22c8a0/0x22ca28 and applies the course. [inferred]" }
+0x22D1E0 = { name = "OpenCourseSelectEntry", note = "Awards stamp 0x28 when eligible, resets progress entries via FUN_0023d2c0/0023df38, then chains into task 0x22cd38." }
+0x22D288 = { name = "ResetRecordTables", note = "Clears record tables DAT_01787068 and DAT_01786ff0 to INT_MAX and seeds best record DAT_00335700 from progress by slot/type." }
+0x22D390 = { name = "RecordLapSplitTimes", note = "Stores a lap/split time into per-category record tables, plays SE 0x2e/0x2f for new bests and advances the lap counter." }
+0x22D620 = { name = "UpdateZoneFromRects", note = "Classifies an object's X/Y against three rectangles from param_4, storing zone id 1-4 at +0x19a. [inferred]" }
+0x22D7B8 = { name = "RankCarsByProgress", note = "Insertion-sorts the 24 car objects by lap progress/zone/position and assigns incrementing rank numbers at +0x247." }
+0x22D8C8 = { name = "DrawRecordTableRows", note = "Emits up to three result rows via FUN_002340c0, highlighting entries equal to best record DAT_00335700. [inferred]" }
+0x22DAE8 = { name = "RunCountdownTimerTask", note = "Fades in over 64 ticks, triggers SE 0x2d at tick 60, a flag at 240, then after 300 ticks ends the event and kills itself. [inferred]" }
+0x22DC68 = { name = "FinishOnCarApproach", note = "Scans cars; the first within 110 units sets rank bits, switches handler to 0x22eac8 and kills this task. [inferred]" }
+0x22E5F8 = { name = "AccumulateDistanceTotals", note = "Accumulates accumulator DAT_0177ae54 (>>15) into a global total and per-slot counters for up to three flagged objects." }
+0x22E718 = { name = "AccumulateDistanceSingle", note = "Adds accumulator DAT_0177ae54 (>>15) to global total DAT_0177fdb8 and its per-slot counter, then zeroes it." }
+0x22E780 = { name = "DrawSlotScoreNumber", note = "Draws the value at DAT_0177fdb4 for slot param_3 at (param_1, param_2*2-6) via FUN_00202d10. [inferred]" }
+0x22E7C0 = { name = "DrawScoreCounter", note = "Draws the score counter DAT_0177fdb4 at fixed screen position (0x1b8,0x1a) via FUN_00202d10." }
+0x22E7F0 = { name = "DrawScoreAndRemaining", note = "Draws score and clamped score-param_1 (returns -1 underflow, 1 overflow) plus a digit glyph via FUN_00202d10." }
+0x22E8C0 = { name = "DrawAltScoreAndRemaining", note = "Draws clamped (score - param_1) at (0x1b8,0x4a) with a glyph strip, returning -1/0/1 for under/ok/overflow." }
+0x22E960 = { name = "DrawTextListRows", note = "Draws up to four text rows from FUN_00243848 via FUN_00204310, laying a panel with FUN_00204568 for the first. [inferred]" }
+0x22EA08 = { name = "GetPlayerScoreboardPtr", note = "Returns the score/status pointer for entry param_1: a per-slot block when the flag nibble is 0, else a house table entry." }
+0x22EA78 = { name = "UploadVifPacketA", note = "Stores param_1 into DAT_0029f540 and sends the 5-quad VIF direct packet at 0x29f510 via vifDirect. [inferred]" }
+0x22EAA0 = { name = "UploadVifPacketB", note = "Stores param_1 into DAT_0029f590 and sends the 5-quad VIF direct packet at 0x29f560 via vifDirect. [inferred]" }
+0x22EAC8 = { name = "RunFadeOutExitTask", note = "Fades out over 64 ticks via FUN_002080f8, then clears globals, reports result -1, kills the task and sets a completion bit." }
+0x22EB78 = { name = "UpdateZoneCheckFrame", note = "Runs zone test 0x22d620 on all 24 cars, tallies results into param_1+0x25, and on finish switches handler to 0x22ee00. [inferred]" }
+0x22ECB8 = { name = "InitRankingDisplay", note = "Seeds flag byte +0x25 from the entry flags, XORs it with 0x3f, installs handler 0x22eb78 and runs it once. [inferred]" }
+0x22EDB8 = { name = "DrawDualScoreNumbers", note = "Draws DAT_0177fdb4 at (0x140,0x2a) and DAT_017831fc at (0x1b8,0x4a) via FUN_00202d10." }
+0x22EE00 = { name = "KillTask", note = "Sets a task slot's timer/kill state and tears it down when it overflows [inferred]" }
+0x2329A0 = { name = "SetVehicleMode", note = "Resets a state block and assigns mode-specific sprite widths and colors [inferred]" }
+0x232D68 = { name = "SetWheelSprite", note = "Init a wheel/vehicle sprite entry with width, pointer, and animation data [inferred]" }
+0x232F08 = { name = "SetWheelSprite2", note = "Initializes an alternate wheel sprite entry with mode-dependent size and asset pointers [inferred]" }
+0x233158 = { name = "SetObjectState", note = "Resets a per-object state table and fills it with a sprite/timer config [inferred]" }
+0x233338 = { name = "SetShadowConfig", note = "Builds a shadow/mesh config from a frame index and stores asset and lifetime data [inferred]" }
+0x233EF0 = { name = "SetBaseValue", note = "Stores a base value in both object fields so later state updates inherit it [inferred]" }
+0x233F10 = { name = "InitHudConfig", note = "Initializes a HUD config block with size, timing, and callback data [inferred]" }
+0x233FC8 = { name = "InitHudConfig2", note = "Initializes a second HUD config block with different widths and callback data [inferred]" }
+0x234080 = { name = "SetSlotConfig", note = "Writes slot-local config values for a specific item and its active state [inferred]" }
+0x2340C0 = { name = "SetStageConfig", note = "Stores stage-local state values and per-slot transform metadata [inferred]" }
+0x234128 = { name = "SetBumperConfig", note = "Resets a bumper state struct and sets width, alpha, and sprite data [inferred]" }
+0x2341F8 = { name = "SetTailConfig", note = "Resets a tail state struct and fills lifetime, alpha, and sprite values [inferred]" }
+0x234378 = { name = "SetDashConfig", note = "Resets a dash state block and writes animation, alpha, and sprite data [inferred]" }
+0x234450 = { name = "SetEngineConfig", note = "Resets an engine state block and writes animation, alpha, and sprite data [inferred]" }
+0x234528 = { name = "ResetStateBlock", note = "Zeroes a large state struct and initializes a base object config [inferred]" }
+0x234618 = { name = "SetBannerConfig", note = "Resets a banner/object state and sets a width, sprite pointer, and frame count [inferred]" }
+0x2346F0 = { name = "SetTrackData", note = "Stores two track-related values into the object metadata fields [inferred]" }
+0x234708 = { name = "SetRoadData", note = "Resets a road state block and fills the pointer, size, and animation data [inferred]" }
+0x2347F0 = { name = "SetRoadData2", note = "Resets a variant road state block with a different asset pointer and mode [inferred]" }
+0x2348D8 = { name = "SetRoadData3", note = "Resets a road state block and sets a larger mode-specific animation config [inferred]" }
+0x2349C8 = { name = "SetRoadData4", note = "Resets a road state block and sets the animation mode/value for another variant [inferred]" }
+0x234AB0 = { name = "SetRoadData5", note = "Resets a road state block and stores a sprite pointer and mode-specific values [inferred]" }
+0x234B98 = { name = "SetRoadData6", note = "Resets a road state block and sets the asset pointer and frame mode [inferred]" }
+0x234C80 = { name = "SetFlagConfig", note = "Resets a flag state entry and writes a sprite pointer and duration value [inferred]" }
+0x234D10 = { name = "ResetMode12", note = "Clears a fresh mode-12 object block and seeds its base state fields [inferred]" }
+0x234D58 = { name = "InitMode13", note = "Clears a mode-13 struct and initializes it with a type ID and start state [inferred]" }
+0x234DB0 = { name = "InitMode14", note = "Clears a mode-14 struct and initializes it with a type ID and start state [inferred]" }
+0x234E08 = { name = "ResetMode15", note = "Clears a mode-15 object block and seeds its base state fields [inferred]" }
+0x234E50 = { name = "ResetMode16", note = "Clears a mode-16 object block and seeds its base state fields [inferred]" }
+0x234E98 = { name = "InitMode17", note = "Clears a mode-17 object and stores a track pointer and mode metadata [inferred]" }
+0x234F20 = { name = "SetTrackMeta", note = "Stores a track metadata value in the object at offset 0x8414 [inferred]" }
+0x234F38 = { name = "SetTrackMeta2", note = "Stores a second track metadata value into the object fields [inferred]" }
+0x234F50 = { name = "SetTrackMeta3", note = "Stores a third track metadata value into the object fields [inferred]" }
+0x234F68 = { name = "SetTrackMeta4", note = "Resets a track animation block and writes sprite pointer and duration data [inferred]" }
+0x235008 = { name = "ResetMode18", note = "Clears a mode-18 object block and seeds its type/state values [inferred]" }
+0x235050 = { name = "ResetMode19", note = "Clears a mode-19 object block and seeds its type/state values [inferred]" }
+0x235098 = { name = "ResetMode1A", note = "Clears a mode-1A object block and seeds its type/state values [inferred]" }
+0x2350F0 = { name = "SetHudState", note = "Resets a HUD state struct and chooses between compact and tall layouts [inferred]" }
+0x2351A0 = { name = "SetHudState2", note = "Resets a second HUD state block with a different sprite pointer and size [inferred]" }
+0x235238 = { name = "SetHudState3", note = "Resets a HUD state block and writes sprite/duration/alpha fields [inferred]" }
+0x2352D8 = { name = "ResetMode1B", note = "Clears a mode-1B object block and seeds its base ID/state values [inferred]" }
+0x235320 = { name = "InitMode1C", note = "Clears a mode-1C object block and seeds its type/state values [inferred]" }
+0x235378 = { name = "InitMode1D", note = "Clears a mode-1D object block and seeds its type/state values [inferred]" }
+0x2353D0 = { name = "ResetMode1E", note = "Clears a mode-1E object block and seeds its base state fields [inferred]" }
+0x235418 = { name = "InitObjectType1F", note = "Clears a 0x8cb0-byte game object and sets its type tag at +0x8008 to 0x1f, returning memset's result. [inferred]" }
+0x235460 = { name = "InitObjectType20", note = "Clears a 0x8cb0-byte object, sets type tag +0x8008=0x20 and initialises four +0x8460 slots to -1. [inferred]" }
+0x2354D8 = { name = "SetObjectField844C", note = "Stores arg2 into the object field at offset +0x844c. [inferred]" }
+0x2354F0 = { name = "SetIndexedValueAndSum", note = "Writes arg3 at index arg2 of the +0x8460 array, records the index at +0x8458, returns the sum of the three positive slots. [inferred]" }
+0x235558 = { name = "SetObjectField845C", note = "Stores arg2 into the object field at offset +0x845c. [inferred]" }
+0x235570 = { name = "UpdateMaxCounter846C", note = "Raises global DAT_01780a2c to the object's +0x846c value when larger; returns 1 on a new maximum. [inferred]" }
+0x2355A8 = { name = "InitObjectType21", note = "Clears a 0x8cb0-byte object and sets its type tag at +0x8008 to 0x21. [inferred]" }
+0x2355F0 = { name = "InitObjectType22", note = "Clears a 0x8cb0-byte object and sets its type tag at +0x8008 to 0x22. [inferred]" }
+0x235638 = { name = "InitObjectType23", note = "Clears a 0x8cb0-byte object and sets its type tag at +0x8008 to 0x23. [inferred]" }
+0x235680 = { name = "SetObjectFields847C8470", note = "Stores arg2 at +0x847c and arg3 at +0x8470 of the object. [inferred]" }
+0x235698 = { name = "UpdateMaxCounter847C", note = "Raises global DAT_01780a28 to the object's +0x847c value when larger; returns 1 on a new maximum. [inferred]" }
+0x2356D0 = { name = "InitObjectType24", note = "Clears a 0x8cb0-byte object and sets its type tag at +0x8008 to 0x24. [inferred]" }
+0x235718 = { name = "SetObjectFields848C8480", note = "Stores arg2 at +0x848c and arg3 at +0x8480 of the object. [inferred]" }
+0x235730 = { name = "InitObjectType25", note = "Clears a 0x8cb0-byte object and sets its type tag at +0x8008 to 0x25. [inferred]" }
+0x2357C0 = { name = "DispatchTypeSetup", note = "Switches on object type byte +0x22 and calls FUN_00233a80 with a category/mode; unknown types fall back to FUN_0022dae8. [inferred]" }
+0x235880 = { name = "InitScreenLayout", note = "Initialises a fixed HUD/result layout: sets header fields and builds six text/panel widgets with hard-coded screen coordinates. [inferred]" }
+0x2359E8 = { name = "DrawStandingsEntry", note = "Draws one two-column result entry (rank icon plus values) for row (arg2,arg3), picking the string table from the +0x22 type. [inferred]" }
+0x235B58 = { name = "DrawRaceResultsScreen", note = "Builds the race-results screen: allocates state, lays out labels, draws standings, then ends the task on button input. [inferred]" }
+0x235F10 = { name = "DrawPlayerResults", note = "Draws one player's result block: rank/course labels plus time and score values read from the per-course tables. [inferred]" }
+0x236238 = { name = "SumPlayerPoints", note = "Returns the sum of table points (DAT_0029fcb8) for the course byte at +3 across the active players. [inferred]" }
+0x236328 = { name = "DrawLicenseList", note = "Loops six course slots and draws list rows with point values for each player below the active player count. [inferred]" }
+0x2364B0 = { name = "DrawLicenseResultsScreen", note = "Draws the license-award screen (per-player results, list rows, \"A/B-License\" text) and applies award/state changes on confirm. [inferred]" }
+0x237388 = { name = "DispatchRecordsScreen", note = "Inits a 0x1f0-byte record-screen state, fills the DAT_01782a74 table, then dispatches to one of three sub-screens by byte +0x25. [inferred]" }
+0x237508 = { name = "EnterLicenseScreen", note = "Exits on cancel, else allocates state, computes player points, sets +0x27 stage, installs FUN_002364b0 and runs it. [inferred]" }
+0x237680 = { name = "DrawShopRow", note = "Draws one shop row (name, resident, price, quantity) for town arg4/shop arg3 when the table entry at DAT_01780750 is valid. [inferred]" }
+0x237878 = { name = "DrawLocationList", note = "Draws the scrolling location list from gs_locations_table and adjusts the +2 scroll offset from d-pad input; closes on confirm. [inferred]" }
+0x237AC0 = { name = "LookupPlayerNameSlot", note = "Searches or creates a name slot (max 20) for the current player id, stores its index at +0x1c/+0x1e, else uses \"ANYBODY\". [inferred]" }
+0x237C48 = { name = "UpdateRaceRecords", note = "Updates the per-course/per-player best-time and best-score tables from the current result and prints \"Player 1/2 WIN!!\". [inferred]" }
+0x238950 = { name = "AwardRaceResult", note = "Chooses a win/lose outcome value for message types '&' (0x26) and '(' (0x28) from race stats and passes it to FUN_0023d8c8. [inferred]" }
+0x238A48 = { name = "DrawRaceSummaryRow", note = "Draws a one-line race summary (course name, rank) plus three FUN_00237680 rows in the column selected by arg2 bit 0. [inferred]" }
+0x238B18 = { name = "SelectAndBuildCamera", note = "Picks nearest camera block for the current car and builds the camera with follow/zoom flags; type -1 delegates to FUN_0021ed90. [inferred]" }
+0x239150 = { name = "DisplayTextDialog", note = "Builds a text object with two appended strings and submits it, or polls completion and ends the task with its result. [inferred]" }
+0x239260 = { name = "DisplayMenuMessage", note = "Builds a five-line text object from the player table and submits it; on completion returns a byte from the results table. [inferred]" }
+0x239378 = { name = "ShowAwardMessage", note = "Displays an award/status message with a list of seven values, then kills the task when the display completes. [inferred]" }
+0x239508 = { name = "ShowResidentMessage", note = "Shows a message, then updates the gs_houses_residents pointer table and player slot before ending the task. [inferred]" }
+0x239748 = { name = "ShowSequencedMessages", note = "Steps through message pages via FUN_0023dbc8 and chains to FUN_00239378 or FUN_00239508 based on the returned page. [inferred]" }
+0x239900 = { name = "ShowPlayerSelect", note = "Builds a player-name selection text (players 0-2), submits it, and returns the chosen player index or -1. [inferred]" }
+0x239A80 = { name = "DrawCourseList", note = "Lists courses in a range with names and ranks and, on selection, spawns the message task at 0x23bb00. [inferred]" }
+0x239F68 = { name = "ShowRankedMessage", note = "Builds a message string via FUN_00243468 and a type switch (cases 1-7) and displays it, ending the task when done. [inferred]" }
+0x23A140 = { name = "ShowPrizeScreen", note = "Converts the stored prize value into an on-screen amount (divide by 0x649) and draws the payout message until confirm. [inferred]" }
+0x23A320 = { name = "HandleNumberSpinner", note = "Edits a 0-99 counter with up/down input (0x4000/0x1000), draws it, and ends the task on confirm. [inferred]" }
+0x23A460 = { name = "HandleAmountAdjuster", note = "Digit-by-digit amount editor (up/down, x10/div10, min/max steps) that commits money changes on confirm. [inferred]" }
+0x23A8E8 = { name = "RenderEscapeText", note = "Word-wraps and draws a string, expanding '$X' codes (money, time, course name, etc.) and advancing the byte cursor. [inferred]" }
+0x23AD00 = { name = "InterpretScriptCommands", note = "Interprets control bytes 1-0x1d (conditions/setup) of a town-shop event script and returns the next script pointer. [inferred]" }
+0x23BB00 = { name = "ShowMessageAndWait", note = "Displays a single message string and waits for it to finish, then ends the task with result 0. [inferred]" }
+0x23BF28 = { name = "FindFlaggedSlotIndex", note = "Scans 160-bit per-slot flag set (5 words, stride 0xd12) for Nth set bit with optional filters in param_4; returns index or -1" }
+0x23C150 = { name = "CountFlaggedSlots", note = "Counts set bits in per-slot flag set (5 words) with same filters; with param_2=-1 returns total count, else rank of given bit" }
+0x23C418 = { name = "SetObjectAttribute", note = "Writes byte attribute at obj+id+0xc and updates obj+8 flag bits (ids 1,2,7-12) from table lookups; no callees" }
+0x23C7B0 = { name = "ReleaseStampFlag", note = "Clears stamp-bit for id at +0x21 in DAT_01780338[+0x23]; if slot mask empties calls FUN_0023cb68(0x19); sets house-stamp bit" }
+0x23CB68 = { name = "SetProgressFlagAndQueue", note = "Sets progress bit in DAT_0177fdd0, enqueues a code byte in 128-byte ring buffer, awards stamp 0x33 when all bits set" }
+0x23CD58 = { name = "CheckUnlockCondition", note = "Returns bool whether a progress gate is satisfied: table lookup of (char,char) pairs plus special cases on params and time value [inferred]" }
+0x23D058 = { name = "ComputeSlotScore", note = "Computes a weighted score for slot param_1 by summing per-slot flags/counts and table weights [inferred]" }
+0x23D2C0 = { name = "SetFlaggedSlotBit", note = "Sets bit param_2 in 5-word per-slot flag set for group param_3; fills first free word, bit set in words 0-4 in order" }
+0x23D390 = { name = "ClearFlaggedSlotBit", note = "Clears bit param_2 in the 5-word per-slot flag set, checking words in reverse order" }
+0x23D488 = { name = "GetFlaggedSlotCount", note = "Returns how many of the 5 per-slot flag words have bit param_2 set; for slot 0/15 returns single-word bit test" }
+0x23D548 = { name = "TestFlaggedSlotBit", note = "Returns the masked bit for param_2 from the per-slot flag set (word 4, or word 0 for slot 0/15)" }
+0x23D5B0 = { name = "CallFindFlaggedSlot", note = "Thin wrapper: tail-calls FindFlaggedSlotIndex (FUN_0023bf28)" }
+0x23D5C8 = { name = "CallCountFlaggedSlots", note = "Thin wrapper: tail-calls CountFlaggedSlots (FUN_0023c150)" }
+0x23D5E0 = { name = "TestObjectAttribute", note = "Returns whether obj byte at param_2+0xc equals param_3" }
+0x23D5F8 = { name = "TestStampFlag", note = "Returns bit param_2 of stamp word DAT_01780338[param_1]; 0 if param_2 >= 32" }
+0x23D628 = { name = "TestStateBitFc78", note = "Tests bit (id-1) in state bitmask DAT_0177fc78; id 0 checks all-set sentinel [inferred]" }
+0x23D6A0 = { name = "TestStateBitFc88", note = "Tests bit (id-1) in state bitmask DAT_0177fc88; returns 0/1 as 64-bit value [inferred]" }
+0x23D6E0 = { name = "SetStateBitFc78AndFc88", note = "Sets bit id in both DAT_0177fc78 and DAT_0177fc88 state bitmasks [inferred]" }
+0x23D730 = { name = "SetStateBitFc88", note = "Sets bit (id-1) in state bitmask DAT_0177fc88 [inferred]" }
+0x23D778 = { name = "TestFlagBitFc98", note = "Returns whether bit id is set in flag bitmask DAT_0177fc98" }
+0x23D7A8 = { name = "SetFlagBitFc98", note = "Sets bit id in flag bitmask DAT_0177fc98" }
+0x23D7E0 = { name = "ClearFlagBitFc98", note = "Clears bit id in flag bitmask DAT_0177fc98" }
+0x23D818 = { name = "PopByteQueue", note = "Pops and returns first byte from the DAT_01782a64 queue, shifting remaining entries; returns 0 when empty" }
+0x23D878 = { name = "AwardHouseStampIfUnset", note = "If house slot id<10 has no stamp in DAT_01780338, awards its stamp via gs_stamps_award_function" }
+0x23D8C8 = { name = "GetOrSetPresidentRaceResult", note = "Stores param into gs_president_race_result_address when not -1; always returns the stored value" }
+0x23D8E8 = { name = "TestFlagFc68", note = "Tests bit (id-1) in 128-bit flag pair DAT_0177fc68/fc70; id 0 checks all-set sentinel [inferred]" }
+0x23D968 = { name = "CountBitsFca8Fcb0", note = "Popcount of the two 64-bit words DAT_0177fca8/fcb0 for slot param_1 (stride 0x689)" }
+0x23DA58 = { name = "InitActorSlot", note = "Copies slot template fields from DAT_0177ea50[param_1] into slot param_2 and sets its class/state bytes; calls FUN_0020ad18, FUN_00250dd0 [inferred]" }
+0x23DB00 = { name = "GetSlotDataPtr", note = "Returns data pointer for slot param_2 (or resident table entry when param_1 nonzero); NULL when unset" }
+0x23DB80 = { name = "MatchSlotPairState", note = "Returns 0/1/2 based on whether slot pair entries DAT_0177fdd4/fdd6 match params (char pair) [inferred]" }
+0x23DBC8 = { name = "CheckSlotPresence", note = "Returns 0 if both slot-A (fdd4) and slot-B (fdd6) entries are nonzero, else 1/2 [inferred]" }
+0x23DBF0 = { name = "TestFlagFca8Clear", note = "Returns true when bit id is clear in DAT_0177fca8 word set (or both words zero for id 0) [inferred]" }
+0x23DC58 = { name = "SpendTimerBudget", note = "Subtracts param_1 from slot timer DAT_0177fdb4[param_2]; fails if insufficient, caps at 999999, plays FUN_00258e50(0x305) [inferred]" }
+0x23DCC0 = { name = "TestFlagFcb8", note = "Tests bit param_2 in 64-bit word of DAT_0177fcb8 array (index 9 for param 0xd, else param-1)" }
+0x23DCF8 = { name = "SetFlagFcb8", note = "Sets bit param_2 in DAT_0177fcb8 word (index 9 for param 0xd, else param-1)" }
+0x23DD30 = { name = "RecordTaskResult", note = "When param nonzero records DAT_00335730 into table DAT_017870c4 and, for index 6, updates min DAT_01780a10; resets DAT_00335730 [inferred]" }
+0x23DDB8 = { name = "FindCurrentTaskIndex", note = "Returns index 0-5 of DAT_00335734 in the DAT_002a2b30 table; 0 when first entry matches or not found [inferred]" }
+0x23DE10 = { name = "IsSlotActive", note = "Returns true when slot's +0x23 equals DAT_00335734 and its +0x21 flag is zero [inferred]" }
+0x23DE30 = { name = "TestProgressFlag", note = "Returns whether bit param_1 is set in progress bitmask DAT_0177fdd0" }
+0x23DE50 = { name = "TestProgressFlagForPair", note = "Looks up (char,char) pair in 25-entry table at 0x2a2b71; returns progress bit for that entry, false if not found" }
+0x23DEB8 = { name = "IsMapEntryEnabled", note = "Returns whether the mapped flag for an in-range entry is set; treats invalid entries as enabled. [inferred]" }
+0x23DF00 = { name = "GetQueuedByte", note = "Returns the low seven bits of a queued byte by index, or -1 when beyond the queue length. [inferred]" }
+0x23DF38 = { name = "AppendQueuedByte", note = "Appends a byte to a 128-byte queue, shifting older entries left when full. [inferred]" }
+0x23DFA0 = { name = "SubmitMessage31", note = "Submits its argument to the shared message routine using fixed identifiers 0x1F and 0x31. [inferred]" }
+0x23DFC0 = { name = "SubmitMessage2B", note = "Submits its argument to the shared message routine using fixed identifiers 0x50 and 0x2B. [inferred]" }
+0x23DFE0 = { name = "HasQueuedByteFlag", note = "Returns bit 7 of the indexed byte in the shared 128-byte queue. [inferred]" }
+0x23DFF8 = { name = "SetQueuedByteFlag", note = "Sets bit 7 on the indexed byte in the shared 128-byte queue. [inferred]" }
+0x23E018 = { name = "AdvanceOscillatingValue", note = "Adjusts a signed 16-bit value through table-defined ranges and toggles direction near its upper bound. [inferred]" }
+0x23E508 = { name = "SubmitAnimatedTextureLayout", note = "Builds animated texture packets and transform matrices, then submits 13 packets. [inferred]" }
+0x23E7E0 = { name = "SubmitThreeTexturePackets", note = "Builds three frame-indexed texture packets and submits 13 packets. [inferred]" }
+0x23E8D0 = { name = "SubmitFiveTexturePackets", note = "Builds five frame-indexed texture packets and submits 21 packets. [inferred]" }
+0x23E9C0 = { name = "SubmitOscillatingTextureLayout", note = "Updates three oscillating transforms, builds texture packets, and submits five packets. [inferred]" }
+0x23ECA0 = { name = "SubmitEightTexturePackets", note = "Builds eight texture packet entries, advances one oscillating frame, and submits 33 packets. [inferred]" }
+0x23EE70 = { name = "SubmitConditionalTextureLayout", note = "Builds three texture packets and conditionally resets a transform and copies a vector. [inferred]" }
+0x23EFB0 = { name = "SubmitFourTexturePackets", note = "Builds four frame-indexed texture packets and submits 17 packets. [inferred]" }
+0x23F0A0 = { name = "UpdateRotatingEffect", note = "Updates effect entities and two opposing rotation transforms based on a periodic input state. [inferred]" }
+0x23F398 = { name = "SubmitDualAnimatedTextureLayout", note = "Builds two frame-driven texture packet groups, advances an oscillator, and submits nine packets. [inferred]" }
+0x23F540 = { name = "SubmitSingleTexturePacketA", note = "Builds one frame-indexed texture packet from layout A and submits nine packets. [inferred]" }
+0x23F630 = { name = "SubmitSingleTexturePacketB", note = "Builds one frame-indexed texture packet from layout B and submits nine packets. [inferred]" }
+0x23F720 = { name = "SubmitThreeTexturePacketsB", note = "Builds three frame-indexed texture packets from layout B and submits 13 packets. [inferred]" }
+0x23F810 = { name = "SubmitFourTexturePacketsB", note = "Builds four frame-indexed texture packets from layout B and submits 17 packets. [inferred]" }
+0x23F900 = { name = "SubmitFiveTexturePacketsB", note = "Builds five packet entries, updates a float from the animation counter, and submits 21 packets. [inferred]" }
+0x23FAD0 = { name = "SubmitFiveTexturePacketsC", note = "Builds five frame-indexed texture packets from layout C and submits 21 packets. [inferred]" }
+0x23FBC0 = { name = "SubmitSingleTexturePacketC", note = "Builds one frame-indexed texture packet from layout C and submits nine packets. [inferred]" }
+0x23FCB0 = { name = "SubmitConditionalTexturePackets", note = "Builds one or two texture packet groups according to a shared state query, then submits nine packets. [inferred]" }
+0x23FF58 = { name = "SubmitSingleTexturePacketD", note = "Builds one frame-indexed texture packet from layout D and submits nine packets. [inferred]" }
+0x240048 = { name = "SubmitSingleTexturePacketE", note = "Builds one frame-indexed texture packet from layout E and submits nine packets. [inferred]" }
+0x240138 = { name = "SubmitSingleTexturePacketF", note = "Builds one frame-indexed texture packet from layout F and submits nine packets. [inferred]" }
+0x240228 = { name = "UpdateCameraTransition", note = "Initializes and advances a multi-state camera transition with bounded horizontal and vertical motion. [inferred]" }
+0x2406F8 = { name = "UpdateProximityEvent", note = "Runs a proximity-triggered multi-state event, moving its vector state and spawning or killing related tasks. [inferred]" }
+0x240BE0 = { name = "IsPointInsideQuad", note = "Returns whether the position at offset 0x90 lies inside a clockwise four-point 2D polygon. [inferred]" }
+0x240CD8 = { name = "UpdateTrafficHazard", note = "Checks a trigger region and nearby vehicles, then changes a timed hazard state and vehicle properties. [inferred]" }
+0x2412E0 = { name = "UpdateConditionalEffects", note = "Spawns or removes three conditional tasks and invokes enabled effect handlers each frame. [inferred]" }
+0x241490 = { name = "DispatchCourseEffect", note = "Selects and initializes a course effect handler from the current course/event ID. [inferred]" }
+0x241688 = { name = "SubmitAnimatedTexturePacketA", note = "Builds a frame-indexed texture packet from layout A and submits five packets. [inferred]" }
+0x241760 = { name = "SubmitAnimatedTexturePacketB", note = "Builds a frame-indexed texture packet from layout B and submits five packets. [inferred]" }
+0x241838 = { name = "NoOpEffect", note = "Performs no action. [inferred]" }
+0x241840 = { name = "SubmitAnimatedTexturePacketC", note = "Builds a frame-indexed texture packet from layout C and submits five packets. [inferred]" }
+0x241918 = { name = "SubmitCounterTexturePacketA", note = "Builds a texture packet indexed by the effect counter and submits five packets. [inferred]" }
+0x2419F0 = { name = "SubmitCounterTexturePacketB", note = "Builds a texture packet indexed by the effect counter and submits five packets. [inferred]" }
+0x241AC8 = { name = "SubmitCounterTexturePacketC", note = "Builds a texture packet indexed by the effect counter and submits five packets. [inferred]" }
+0x241BA0 = { name = "NoOpEffectB", note = "Performs no action. [inferred]" }
+0x241BA8 = { name = "UpdateMapCoinCollection", note = "Checks nearby map coins, plays their collection sound, clears collected bits, and queues a special byte. [inferred]" }
+0x241F68 = { name = "UpdateNearbyCarEffect", note = "Tracks nearby cars against a selected position and updates a proximity-driven visual/audio effect. [inferred]" }
+0x2423B8 = { name = "InitializeEffectPackets", note = "Initializes four fixed graphics packet words for a course effect. [inferred]" }
+0x243468 = { name = "DispatchByIndex16", note = "Jump-table dispatch: for index<16 calls function pointer from PTR_FUN_002f1240 and returns its result, else 0 [inferred]" }
+0x243490 = { name = "GetTableEntry_ed720", note = "Returns table pointer at PTR_002ed720 indexed by param_2 with stride 0x44; param_1 ignored [inferred]" }
+0x2434B0 = { name = "GetLabelEntry_eca70", note = "Returns string pointer from label table at 002eca70 indexed by param_2 (stride 0x1c) [inferred]" }
+0x2434D0 = { name = "GetLabelEntry_eced0", note = "Returns string pointer from label table at 002eced0 indexed by param_2 (stride 0x18) [inferred]" }
+0x2434F0 = { name = "GetLabelEntry_ed1f8", note = "Returns string pointer from label table at 002ed1f8 indexed by param_2 (stride 0x10) [inferred]" }
+0x243508 = { name = "GetLabelEntry_ed328", note = "Returns string pointer from label table at 002ed328 indexed by param_2 (stride 0x1c) [inferred]" }
+0x243528 = { name = "GetLabelEntry_ed4e8", note = "Returns string pointer from label table at 002ed4e8 indexed by param_2 (stride 0x10) [inferred]" }
+0x243568 = { name = "GetLabelEntry_effd8", note = "Returns string pointer from label table at 002effd8 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243588 = { name = "GetLabelEntry_eff40", note = "Returns string pointer from Headlights label table at 002eff40 indexed by param_2 (stride 0x10) [inferred]" }
+0x2435A0 = { name = "GetLabelEntry_f0280", note = "Returns pointer from table at 002f0280 indexed by param_2 (stride 0x0c) [inferred]" }
+0x2435C0 = { name = "GetLabelEntry_f02f8", note = "Returns pointer from table at 002f02f8 indexed by param_2 (stride 0x10) [inferred]" }
+0x2435D8 = { name = "GetLabelEntry_f03e0", note = "Returns pointer from table at 002f03e0 indexed by param_2 (stride 0x14) [inferred]" }
+0x2435F8 = { name = "GetLabelEntry_f07f8", note = "Returns pointer from table at 002f07f8 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243618 = { name = "GetLabelEntry_f00a0", note = "Returns string pointer from Normal Horn label table at 002f00a0 indexed by param_2 (stride 0x10) [inferred]" }
+0x243630 = { name = "GetLabelEntry_f06c0", note = "Returns string pointer from Normal Meter label table at 002f06c0 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243650 = { name = "GetLabelEntry_f0810", note = "Returns string pointer from Stylish Pattern label table at 002f0810 indexed by param_2 (stride 0x08) [inferred]" }
+0x243670 = { name = "DispatchByIndex15", note = "Jump-table dispatch: for index<15 calls function pointer from PTR_FUN_002f1280 and returns result, else 0 [inferred]" }
+0x243698 = { name = "GetConst500", note = "Returns constant 500" }
+0x2436A0 = { name = "GetIntField_eca78", note = "Reads int from table at 002eca78 indexed by param_2 (stride 0x1c) [inferred]" }
+0x2436C0 = { name = "GetIntField_eced8", note = "Reads int from table at 002eced8 indexed by param_2 (stride 0x18) [inferred]" }
+0x2436E0 = { name = "GetIntField_ed200", note = "Reads int from table at 002ed200 indexed by param_2 (stride 0x10) [inferred]" }
+0x2436F8 = { name = "GetIntField_ed330", note = "Reads int from table at 002ed330 indexed by param_2 (stride 0x1c) [inferred]" }
+0x243718 = { name = "GetIntField_ed4f0", note = "Reads int from table at 002ed4f0 indexed by param_2 (stride 0x10) [inferred]" }
+0x243758 = { name = "GetIntField_effe0", note = "Reads int from table at 002effe0 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243778 = { name = "GetIntField_eff48", note = "Reads int from table at 002eff48 indexed by param_2 (stride 0x10) [inferred]" }
+0x243790 = { name = "GetIntField_f0288", note = "Reads int from table at 002f0288 indexed by param_2 (stride 0x0c) [inferred]" }
+0x2437B0 = { name = "GetIntField_f0300", note = "Reads int from table at 002f0300 indexed by param_2 (stride 0x10) [inferred]" }
+0x2437C8 = { name = "GetIntField_f03e8", note = "Reads int from table at 002f03e8 indexed by param_2 (stride 0x14) [inferred]" }
+0x2437E8 = { name = "GetIntField_f0800", note = "Reads int from table at 002f0800 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243808 = { name = "GetIntField_f00a8", note = "Reads int from table at 002f00a8 indexed by param_2 (stride 0x10) [inferred]" }
+0x243820 = { name = "GetIntField_f06c8", note = "Reads int from table at 002f06c8 indexed by param_2 (stride 0x0c) [inferred]" }
+0x243848 = { name = "GetNthStringByCategory", note = "Switch on category id 1-15 selects a string table; returns the param_3-th NUL-delimited string from it [inferred]" }
+0x243A00 = { name = "GetPartValueU16", note = "Returns u16 from category tables for id 8/11/12 (else 0) indexed by param_2 [inferred]" }
+0x243A78 = { name = "ComputeScaledPartValue", note = "Scales the value from DispatchByIndex15 by two FUN_0023d058 readings (/2000 or /4000 by flag); returns int [inferred]" }
+0x243B38 = { name = "SetupCarouselSlotTransforms", note = "Loops 16 slots: sets draw state via FUN_0021d788, copies VU0 vectors and writes 0xff0 scale words" }
+0x243C50 = { name = "BuildCarouselSlotPackets", note = "Builds per-slot GS draw packets for 16 carousel entries from item tables; uses GetPartValueU16 and FUN_00223810 [inferred]" }
+0x244078 = { name = "LayoutRaceRowQuads", note = "Fills 16 rows of 4-vertex quad data (positions, colors) from race tables, table chosen by flag [inferred]" }
+0x2443D0 = { name = "BuildCarouselQuadA", note = "Writes quad vertex data for a carousel card using cos-based scale and per-slot offsets [inferred]" }
+0x244538 = { name = "BuildCarouselQuadB", note = "Variant of BuildCarouselQuadA with different offsets; writes 4 vertices for a carousel card [inferred]" }
+0x2446A8 = { name = "BuildCarouselQuadC", note = "Variant of BuildCarouselQuadA with different offsets; writes 4 vertices for a carousel card [inferred]" }
+0x244800 = { name = "BuildCarouselQuadD", note = "Variant of BuildCarouselQuadA with different offsets; writes 4 vertices for a carousel card [inferred]" }
+0x244988 = { name = "BuildCarouselDrawPacket", note = "Builds packed transform/GS register words for a carousel item, then sets up camera and light direction [inferred]" }
+0x2477A8 = { name = "DrawCarouselStatText", note = "Draws stat labels and numeric values for a carousel item via text-draw helpers [inferred]" }
+0x247AC8 = { name = "DrawCarouselStatBars", note = "Draws stat values for one item: sums 20-byte table slices and draws two text readouts [inferred]" }
+0x247BF0 = { name = "DrawCarouselSlotPanel", note = "Draws a carousel slot panel (header, icons, stat rows) by calling DrawCarouselStatBars [inferred]" }
+0x247E38 = { name = "DrawTwoPlayerResults", note = "Draws 2-player race results table UI, printing scores and calculating total sums for both players [inferred]" }
+0x248180 = { name = "UpdateRaceResultsMenu", note = "Task update function for quick race and 2-player race results screen, handling inputs and screen transitions [inferred]" }
+0x248398 = { name = "UpdateCarouselConfirmDialog", note = "Task update function displaying a two-option confirmation dialog in the carousel menu and handling confirmation [inferred]" }
+0x248580 = { name = "UpdateCarouselPlayerSelect", note = "Task update function for carousel player/entry selection menu, managing 1P/2P choices and spawning sub-tasks [inferred]" }
+0x248A70 = { name = "UpdateCarouselPromptDialog", note = "Task update function that spawns a prompt dialog task (0x239150) and handles return result or cancellation [inferred]" }
+0x248BF0 = { name = "UpdateCarouselSubMenu", note = "Task update function for a 3-item carousel sub-menu, handling item navigation, sound effects, and task spawning [inferred]" }
+0x2490A0 = { name = "UpdateRaceHud", note = "Updates and dispatches HUD rendering functions for each player vehicle via jump table PTR_LAB_002a8fb0 [inferred]" }
+0x249458 = { name = "CalculateSpeedometerValue", note = "Computes vehicle speedometer display value from velocity vector, clamping to 186 max and scaling by input range [inferred]" }
+0x2494E8 = { name = "CalculateSpeedometerDigits", note = "Calculates vehicle speed from velocity vector and converts the integer speed to BCD digit format [inferred]" }
+0x249520 = { name = "CalculateTachometerValue", note = "Computes tachometer RPM display gauge value from vehicle engine RPM, clamping to 10000 and scaling by param_2 [inferred]" }
+0x249568 = { name = "CalculateBoostGaugeValue", note = "Calculates boost/gauge bar value from vehicle meter field at 0x23c, clamping to 0x40000 and scaling [inferred]" }
+0x2495B8 = { name = "GetVehicleGear", note = "Returns the 1-byte current transmission gear or state at vehicle offset 0x1ff [inferred]" }
+0x2495C0 = { name = "GetVehicleTransmissionMode", note = "Maps the transmission/shift mode byte at vehicle offset 0x244 (-1, 1, or other) to 1, 2, or 0 [inferred]" }
+0x2495E8 = { name = "GetVehicleRaceTime", note = "Returns the 32-bit time/counter field at vehicle structure offset 0x14 [inferred]" }
+0x2495F0 = { name = "FormatRaceTimeBCD", note = "Converts tick timer at offset 0x14 into packed MM:SS digit format with colon separator [inferred]" }
+0x249670 = { name = "GetRaceTimeRank", note = "Evaluates race elapsed time at offset 0x14 against duration thresholds and returns a rank index [inferred]" }
+0x24EA00 = { name = "ExtractDelimitedToken", note = "Extracts the n-th delimited token from string param_2 using delimiter set param_3 into buffer param_1 [inferred]" }
+0x24F3B8 = { name = "CountSetBitsInByteArray", note = "Computes population count (total set bits) across an array of param_2 bytes [inferred]" }
+0x24F4A0 = { name = "IntToPackedBCD", note = "Converts an integer to packed BCD format with each decimal digit placed into a 4-bit nibble [inferred]" }
+0x24F4E0 = { name = "CountDecimalDigits", note = "Returns the number of decimal digits required to represent positive integer param_1 [inferred]" }
+0x24F530 = { name = "DrawTextHalfY", note = "Wrapper that halves the vertical coordinate before delegating to text drawing routine FUN_00203fc8 [inferred]" }
+0x24FAD0 = { name = "DrawOptionSlider", note = "Draws an options menu slider or selector bar at adjusted coordinates with optional cursor highlight [inferred]" }
+0x24FB38 = { name = "SetGamePausedState", note = "Toggles pause flag 0x2000 at param_1+0x28 and calls sound pause (00258ff0) or resume (00259050) [inferred]" }
+0x24FB80 = { name = "InitCameraTransforms", note = "Resets camera/transform state, clearing angle field and initializing two 4x4 matrices to identity [inferred]" }
+0x24FCD8 = { name = "CarAiInit", note = "Initializes car AI state, allocating 0x100-byte AI buffer and binding course waypoint path tables [inferred]" }
+0x24FED8 = { name = "ComputeWaypointTargetAngle", note = "Computes heading angles from vehicle position to waypoint segment endpoints via atan2 and packs results [inferred]" }
+0x250068 = { name = "UpdateVehicleWaypointProgress", note = "Tracks vehicle position against course waypoint segments, updating current waypoint index and lateral error [inferred]" }
+0x250738 = { name = "DrawWaypointDebugGrid", note = "Renders on-screen debug text grid for nearby AI waypoint segments and node attributes [inferred]" }
+0x2508E0 = { name = "CalculateAiSteeringAndThrottle", note = "Calculates AI steering angle and throttle response based on target waypoint heading and current vehicle speed [inferred]" }
+0x250DD0 = { name = "CopyAiRouteTables", note = "Copies 16 default AI route/path tables (0x100 bytes each) from DAT_002a9b80 into destination buffer [inferred]" }
+0x250F00 = { name = "InitMiniGameBallState", note = "Initializes mini-game ball entity position, camera, and velocity physics state for the selected hole/stage [inferred]" }
+0x250FE0 = { name = "CalculateBallLaunchImpulse", note = "Calculates mini-game ball hit impulse vector based on player aim and power meter [inferred]" }
+0x251190 = { name = "ApplyCupAttraction", note = "Checks mini-game ball proximity to hole and applies attraction/sink velocity when near the cup [inferred]" }
+0x251440 = { name = "UpdateBallPhysics", note = "Simulates mini-game ball physics: terrain collision, bounce reflection, friction, rotation, and stop check [inferred]" }
+0x251B60 = { name = "UpdateGolfMiniGame", note = "Main task state machine for the 9-hole golf mini-game, managing stages, player shot input, and scorecard [inferred]" }
+0x252608 = { name = "InitGolfCourseTable", note = "Initializes 9-hole golf course pars, distances, high scores, and clears player scorecard array [inferred]" }
+0x252738 = { name = "RecordGolfHoleScore", note = "Records stroke count for current golf hole against par, updates total score, and saves course records [inferred]" }
+0x252880 = { name = "DrawGolfHoleIntro", note = "Displays golf hole preview banner showing hole number, par, and yardage before play begins [inferred]" }
+0x252CB0 = { name = "DrawGolfScorecard", note = "Renders 9-hole golf scorecard table displaying hole pars, player scores, and relative totals [inferred]" }
+0x253218 = { name = "SetGolfCurrentHole", note = "Stores the active golf hole index at offset 0x8008 in the golf state structure [inferred]" }
+0x253230 = { name = "SetAiSteeringTarget", note = "Computes and sets AI vehicle steering input flags based on angle delta to target and speed limit [inferred]" }
+0x253448 = { name = "SteerAiToDefaultWaypoint", note = "Steers AI vehicle toward default waypoint target coordinates when navigating course sections [inferred]" }
+0x253680 = { name = "UpdateAiCourseSteering", note = "Directs AI vehicle navigation across course waypoints, choosing between target node and default path [inferred]" }
+0x253B80 = { name = "HandleCarObjectCollisions", note = "Checks collision between object and all player/NPC cars, applying bounce impulse and triggering rumble [inferred]" }
+0x253E90 = { name = "ApplyArenaWallCollisions", note = "Tests object position against rectangular arena boundary walls, reflecting velocity with bounce damping [inferred]" }
+0x254290 = { name = "RotateObjectByWrappedYaw", note = "Normalizes an angle float into a [min,max] range, builds a vu0 rotation matrix, and applies it to an object transform and its child, normalizing both. [inferred]" }
+0x254430 = { name = "TuningGarageSceneTask", note = "Large task state machine for a 2-player garage/tuning scene: allocates 0x8d70 state, plays bgm, spawns 6 car objects, runs timed stages (menus, engine sounds, camera fade) then kills tasks. [inferred]" }
+0x254CC8 = { name = "GetTuningParamFromCarSlot", note = "Returns a tuning-table value from car object (offset 600 + slot*12 + 0x74) after calling FUN_00253680, only when task flag bit 2 is set. [inferred]" }
+0x254D20 = { name = "CarShopVisitSceneTask", note = "Task allocating 0x8cd0 state that plays bgm 0xa100201, spawns a subtask, and waits for the car (DAT_0177ace4) to reach a shop position or a saved-car match before advancing flags and killing tasks. [inferred]" }
+0x255070 = { name = "BuildPaintEditorMenuSprites", note = "Fills a 0x175b570 sprite packet buffer with a grid of menu sprites, RGB color-coded swatches (red/green/blue/magenta/cyan/yellow), and 4 text labels for the paint editor. [inferred]" }
+0x2557A0 = { name = "DrawPaintCursorSprites", note = "Draws two 0x20x0x20 cursor sprites selected from a table (0x2ac600), or static sprites when blink timer is zero; second sprite driven by item index. [inferred]" }
+0x2558B8 = { name = "DrawPaintEditorDigits", note = "Builds digit sprites for 6 paint-value nibbles with dimming by player cursor, draws hex digit characters, item-count banner text, and turn arrows, into the paint editor packet buffer. [inferred]" }
+0x2560F0 = { name = "HandlePaintEditorInput", note = "Controller input for paint editor: moves cursor among 6 nibbles/palette, increments nibble of RGB value in progress record, wraps at bounds, plays beep 0x1d, swaps RGB fields. [inferred]" }
+0x2564E8 = { name = "PaintEditorConfirmTask", note = "Paint-editor confirm step: redraws digits, on commit stores edited 32-bit paint value into gs_progress_ram entry, compares to previous value and charges payment via FUN_0023dc58; toggles between confirm and edit tasks. [inferred]" }
+0x256640 = { name = "PaintEditorEditTask", note = "Paint editor main task: runs input handler, redraws menu and cursors, honors blink timer, on X/cancel transitions to confirm task FUN_002564e8, cancel dialog, or \"Need more money\" dialog. [inferred]" }
+0x2568D8 = { name = "ClosePaintEditorWindow", note = "Window slide-out animation: decrements 16-bit timer at task+2 by 4, moves the panel sprite up with FUN_002063c8, kills task when offset hits -0x38. [inferred]" }
+0x256958 = { name = "OpenPaintEditorScene", note = "Opens paint editor scene: copies paint value from gs_progress_ram entry, detects mirrored RGB nibbles to set grayscale flag, builds menu sprites, then starts slide-in anim or hands off. [inferred]" }
+0x256A78 = { name = "SlideInPaintEditorWindow", note = "Slide-in animation opposite of close: increments timer at task+2 by 4 until it reaches 0 while moving the panel sprite, then transitions to FUN_00256640. [inferred]" }
+0x256AF8 = { name = "InitSoundRpcDriver", note = "Boot-time sound init: binds RPC to IOP server 0x1234567, sends port/config calls (cmds 0,5,4), sets DGA/DMA2 registers, and registers bgm/SE file names via RPC cmds 6/7/0x32. [inferred]" }
+0x2574A0 = { name = "SoundRpcPlaySequence", note = "Sends RPC cmd 0x23 with a parameter then cmd 0x22 with a single entry to the sound driver, likely loading/starting a sequence. [inferred]" }
+0x2575E0 = { name = "SoundRpcRegisterFiles", note = "Registers two file names per call via RPC cmd 0x32 at slot index*2 and *2+1, copying strings with sizes into the driver request buffer. [inferred]" }
+0x257BA8 = { name = "SoundRpcGetStatus", note = "Sends RPC cmd 8 with arg 1 to the sound driver and returns the 32-bit value returned in DAT_0175f880 (status/result query). [inferred]" }
+0x257F30 = { name = "MusicRpcPlayBgm", note = "Sends RPC cmd 0xe with two params to the sound driver; shared backend for all BGM-slot wrappers. [inferred]" }
+0x257FD8 = { name = "MusicRpcCmd15", note = "Sends RPC cmd 0xf with one param to the sound driver; lowest-level stop/reset wrapper used by BGM control. [inferred]" }
+0x2583F0 = { name = "SetVolumeDgaRegs", note = "Writes two DGA2 registers (0x981, 0xa81) with the given volume values via FUN_002793d0; used by the options volume screen for BGM and SE. [inferred]" }
+0x258578 = { name = "SoundInitVolumes", note = "Stop/reset sound then sets both channels 0 and 1 to value 0x1ccc via FUN_002585f0 (RPC 0x21); called during system init. [inferred]" }
+0x2585B0 = { name = "SoundRpcStopAll", note = "Sends a single RPC cmd 0x20 to the sound server (stop-all/flush voices). [inferred]" }
+0x2585F0 = { name = "SoundRpcSetVolume", note = "Sends RPC cmd 0x21 with three params (id, value, value) to the sound server, setting a channel/voice volume pair. [inferred]" }
+0x258810 = { name = "SoundRpcCmd25", note = "Sends RPC cmd 0x25 with one param to the sound server; start/open voice command used when clearing sound state. [inferred]" }
+0x2588B8 = { name = "SoundRpcCmd26", note = "Sends RPC cmd 0x26 with one param to the sound server; used in pairs for channels 0 and 1 (likely fadeout/stop per channel). [inferred]" }
+0x2589A0 = { name = "SoundRpcCmd31", note = "Sends RPC cmd 0x31 with two equal params to the sound server; used to push a master volume value derived from global amp. [inferred]" }
+0x258A48 = { name = "SoundRpcCmd33PlaySe", note = "Sends RPC cmd 0x33 with two params to the sound server; plays a sound by index (first param) given a volume/voice param. [inferred]" }
+0x258AF0 = { name = "SoundRpcCmd34", note = "Sends a parameterless RPC cmd 0x34 to the sound server (commit/trigger after Cmd33). [inferred]" }
+0x258B30 = { name = "SoundRpcCmd35", note = "Sends a parameterless RPC cmd 0x35 to the sound server (sound-system reset/stop). [inferred]" }
+0x258E50 = { name = "PlayUiSound", note = "Plays a UI sound effect: calls FUN_00258308 with the given id OR 0x40400000 (float-encoded flag); ubiquitous beep/click wrapper with 125+ callers." }
+0x258EB0 = { name = "BgmStop1", note = "Trivial wrapper calling FUN_00257fd8(1) (RPC cmd 0xf), likely stopping/asserting BGM channel 1. [inferred]" }
+0x258F30 = { name = "PlayBgmSlot1", note = "Wrapper calling FUN_00257f30(1,0) — plays BGM slot 1 via RPC cmd 0xe (used at scene starts). [inferred]" }
+0x258F50 = { name = "PlayBgmSlot2", note = "Wrapper calling FUN_00257f30(2,0) — plays BGM slot 2. [inferred]" }
+0x258F70 = { name = "PlayBgmSlot3", note = "Wrapper calling FUN_00257f30(3,0) — plays BGM slot 3. [inferred]" }
+0x258F90 = { name = "PlayBgmSlot4", note = "Wrapper calling FUN_00257f30(4,0) — plays BGM slot 4. [inferred]" }
+0x258FB0 = { name = "PlayBgmSlot5", note = "Wrapper calling FUN_00257f30(5,0) — plays BGM slot 5 (used at menu/scene transitions). [inferred]" }
+0x258FD0 = { name = "PlayBgmSlot6", note = "Wrapper calling FUN_00257f30(6,0) — plays BGM slot 6. [inferred]" }
+0x258FF0 = { name = "SoundStopAllChannels", note = "Stops both voices via FUN_00258810(0/1), sends BGM cmd with param 1, then clears all two sound handle slots in DAT_00335728; standard sound teardown. [inferred]" }
+0x259050 = { name = "SoundFadeOutChannels", note = "Calls FUN_002588b8 for channels 0 and 1 (RPC cmd 0x26 pair) — fades out/stops all sound channels. [inferred]" }
+0x259070 = { name = "SoundStopVoiceByHandle", note = "Stops the voice whose handle is stored at (&DAT_00335728)[slot] by calling FUN_00257c68 with it, if nonzero. [inferred]" }
+0x2590B0 = { name = "ApplySoundVolumes", note = "Computes scaled master volume from global amp DAT_01780a3e and pushes it via FUN_002589a0, then optionally plays a SE (DAT_01780a3d) followed by FUN_00258af0. [inferred]" }
+0x259138 = { name = "SpawnDoorMenuEntity", note = "Iterates the doors table (0x2be43c) matching route-event id at param_2+0x54, picking entries from gs_doors_table_address with special cases for doors 9 and 0xc (route/gear dialogs); spawns associated entity. [inferred]" }
+0x259498 = { name = "CheckCarArrivedAtZone", note = "Checks whether race car index param_2 has arrived (position thresholds DAT_003330ac-0xb4, speed 117/83, parked flags at 0x177ad40); sets route bit 0x800 and per-player flag bytes on param_1. [inferred]" }
+0x2595F0 = { name = "StreetSceneTask", note = "Task allocating 0x8cc0 state that plays bgm 0xa0d0201, spawns task 0x2357c0, places cars at fixed coordinates (730,98) and (730,102), and drives a dialog/arrive state machine. [inferred]" }
+0x259A08 = { name = "UpdateNpcTailCarTransform", note = "If not paused, computes distance between an NPC object (param_1+0x1c ptr) and car position 0x177ace0; under 1.5 it snaps flags and rebuilds the NPC's transform/matrix from car velocity and position sectors. [inferred]" }
+0x26BE50 = { name = "ProcessLocationArrival", note = "Hub arrival: builds location asset list, writes per-resident status bytes, picks interaction target, spawns follow-up tasks. [inferred]" }
+0x26C460 = { name = "RequestLocationAssetLoad", note = "Queues 22 gs_locations_table entries as load request (flag 0xb), polls status, spawns arrival handler 0x0026be50 on ready. [inferred]" }
+0x26CA48 = { name = "ApplyTimeOfDayLighting", note = "Sets time-of-day value (+0x14) from DAT_002dcd28[arg], re-applies updateTimeOfDayLight every frame, spawns setup tasks on start. [inferred]" }
+0x26CB60 = { name = "StartAreaIntroDayCycle", note = "Area 0xa script: spawn lighting task, BGM 0x0a1c0201; tick 780 fires event, tick 844 restarts step 1 with BGM 0x0a1a0201. [inferred]" }
+0x26CCD0 = { name = "DispatchAreaEntryTask", note = "Queues 12 asset loads, polls area entry (FUN_00205c08), spawns day-cycle task chosen by area byte +0xd (0xa->cb60, 0xb->d2c0). [inferred]" }
+0x26D020 = { name = "HandleMenuScrollSelect", note = "Flags at +0x30 scroll a selection index (0x1000/0x4000), 0x100 confirms item +0x20 via FUN_0020e5b8, 0x50 chains to 0x0026bc08. [inferred]" }
+0x26D1C0 = { name = "AdvanceDayCycleStep", note = "Waits for clock field (+8) to reach DAT_002dcd50[step], kills/respawns lighting task 0x0026ca48 per step, ends after step 10. [inferred]" }
+0x26D2C0 = { name = "StartDayCycleStepTask", note = "Area 0xb entry: BGM 0x0a1a0201, spawns lighting task 0x0026ca48 at step 1, swaps handler to stepper 0x0026d1c0 when player ready. [inferred]" }
+0x26D370 = { name = "InitDefaultSpawnPhase", note = "Boot phase: sets id 81000, inits progress globals, spawns entity tasks, writes player bytes, installs FUN_00211808. [inferred]" }
+0x26D438 = { name = "InitSelectedSpawnPhase", note = "Boot phase: maps FUN_0027afd8 select case 0-5 to spawn ids via FUN_00229f70, sets progress ptr, chains to 0x0026d550. [inferred]" }
+0x26D550 = { name = "LoadRaceSceneEntities", note = "Once entity ready (+0xf==0): spawns task 0x0025bcf0, spawns entities 0x370001/0x300001, chains handler to 0x0026d5e0. [inferred]" }
+0x26D5E0 = { name = "ContinueRaceEntityLoad", note = "If flag +0x24 set: respawns task 0x0025bcf0 with arg 1 and chains handler to 0x0026d628. [inferred]" }
+0x26D628 = { name = "ApplyRacePlayerMode", note = "If flag +0x24 set: writes player mode bytes (+0x21=9, +0x23=8), calls FUN_00211708, chains handler to 0x0026d678. [inferred]" }
+0x26D678 = { name = "FinishBootPhase", note = "If task field +0x10==0: resets progress globals, spawns entity 0x70001, sets player bytes 1/0, installs handler FUN_00211808. [inferred]" }
+0x26D700 = { name = "DrawRaceHudNumbers", note = "Packs timer (+0xa0/+0xa8) and formats counters +0x90..0x98, +0x19c, +0x1f8 into numeric HUD slots via FUN_0027eee0/FUN_00203a50. [inferred]" }
+0x26DE80 = { name = "DrawMapCoordinateValues", note = "Formats 4 vector words via FUN_0027b7b0 into template 0x32fbb8 and draws at slot 0x10 row param_2*8, used by map draw fns. [inferred]" }
+
 [data]
 0x3356EC = { name = "vifPacketPtr", note = "write pointer of the VIF1 packet being built" }
 0x3356F0 = { name = "vifPacketSaved", note = "main-buffer pointer saved while the second buffer is built" }

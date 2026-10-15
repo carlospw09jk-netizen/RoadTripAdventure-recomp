@@ -32,6 +32,7 @@ __pycache__/
 # Runtime artifacts written to the working directory
 imgui.ini
 ps2_log.txt
+/preview.png
 
 # Claude Code local state
 .claude/settings.local.json

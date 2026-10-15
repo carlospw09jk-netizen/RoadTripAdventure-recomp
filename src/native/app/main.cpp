@@ -3,6 +3,7 @@
 // contains no duplicate road/car/shader code.
 #include "assets/native_model.h"
 #include "audio/engine.h"
+#include "audio/vag_loader.h"
 #include "gameplay/game_loop.h"
 #include "gameplay/input.h"
 #include "gameplay/menu.h"
@@ -96,11 +97,19 @@ void SDLCALL fillAudio(void* userdata, SDL_AudioStream* stream, int additionalBy
 }
 
 bool initAudio(AudioHost& audio) {
-    // A one-second synthetic saw wave proves the SoundEngine -> SDL output path
-    // without needing any disc-derived audio data. Its lifetime is the host's.
-    audio.bgm.resize(kAudioSampleRate);
-    for (int i = 0; i < kAudioSampleRate; ++i) {
-        audio.bgm[static_cast<std::size_t>(i)] = static_cast<std::int16_t>((i % 240) * 100 - 12000);
+    const char* bgmPath = std::getenv("RT_APP_BGM");
+    rt::native::audio::PcmBuffer loadedBgm;
+    if (bgmPath && *bgmPath && rt::native::audio::loadVagFile(bgmPath, loadedBgm)) {
+        audio.bgm = std::move(loadedBgm.samples);
+        std::cout << "rt-app BGM loaded: " << bgmPath << " (" << audio.bgm.size() << " frames)\n";
+    } else {
+        if (bgmPath && *bgmPath) std::cerr << "rt-app BGM load failed, using synthetic tone: " << bgmPath << "\n";
+        // A one-second synthetic saw wave keeps the output path usable when no
+        // BGM file is selected. Its lifetime is the host's.
+        audio.bgm.resize(kAudioSampleRate);
+        for (int i = 0; i < kAudioSampleRate; ++i) {
+            audio.bgm[static_cast<std::size_t>(i)] = static_cast<std::int16_t>((i % 240) * 100 - 12000);
+        }
     }
     audio.engine.setMasterVolume(.25f);
     audio.engine.playBgm(0, 0x0a1c0201u,

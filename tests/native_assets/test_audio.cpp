@@ -4,10 +4,13 @@
 // by hand, matching tools/audio_extract.cpp::decodeAdpcm). The mixer is
 // checked for sum, clamp, pan and mono. No game data.
 #include "../../src/native/audio/vag.h"
+#include "../../src/native/audio/vag_loader.h"
 #include "../../src/native/audio/mixer.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 using namespace rt::native::audio;
@@ -231,6 +234,75 @@ static void testVagHeader() {
     // Bad magic: false.
     buf[0] = 'X';
     CHECK(!parseVagHeader(buf.data(), buf.size(), h));
+}
+
+// The loader must select a VAGp body (rather than treating its header as an
+// ADPCM block), preserve the decoded samples, and reject an incomplete file.
+// Removing the header/body bounds check or forwarding the wrong stream makes
+// this fail.
+static void testVagLoader() {
+    const auto checkRejected = [](const std::vector<std::uint8_t>& invalidData) {
+        PcmBuffer untouched{{123}, 1, false};
+        CHECK(!loadVagToPcm(invalidData, untouched));
+        CHECK_EQ_I32(int(untouched.frames), 1);
+        CHECK_EQ_I32(int(untouched.samples.size()), 1);
+        if (untouched.samples.size() == 1) CHECK_EQ_I32(untouched.samples[0], 123);
+        CHECK(!untouched.loop);
+    };
+    checkRejected({});
+    checkRejected(std::vector<std::uint8_t>(15, 0));
+    checkRejected(std::vector<std::uint8_t>(kVagBlockBytes, 0xff));
+
+    VagNibbles n;
+    n.shift = 12;
+    n.filter = 0;
+    for (std::size_t i = 0; i < 28; ++i) n.nibbles[i] = static_cast<std::uint8_t>(i & 0x0F);
+
+    std::uint8_t block[16];
+    buildVagBlock(n, block);
+    std::vector<std::uint8_t> stream(block, block + sizeof(block));
+    std::uint8_t terminator[kVagBlockBytes] = {};
+    terminator[1] = kVagEndOfStream;
+    stream.insert(stream.end(), terminator, terminator + sizeof(terminator));
+    const auto expected = decodeVagStream(stream.data(), stream.size());
+
+    std::vector<std::uint8_t> vag(kVagHeaderBytes, 0);
+    vag[0] = 'V'; vag[1] = 'A'; vag[2] = 'G'; vag[3] = 'p';
+    vag[15] = static_cast<std::uint8_t>(stream.size());
+    vag.insert(vag.end(), stream.begin(), stream.end());
+
+    PcmBuffer decoded;
+    CHECK(loadVagToPcm(vag, decoded));
+    CHECK(decoded.loop);
+    CHECK_EQ_I32(int(decoded.frames), int(expected.size()));
+    CHECK(decoded.samples == expected);
+
+    PcmBuffer rawDecoded;
+    CHECK(loadVagToPcm(stream, rawDecoded));
+    CHECK_EQ_I32(int(rawDecoded.frames), int(expected.size()));
+    CHECK(rawDecoded.samples == expected);
+
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "rt_native_vag_loader_test.vag";
+    {
+        std::ofstream file(path, std::ios::binary);
+        file.write(reinterpret_cast<const char*>(vag.data()), static_cast<std::streamsize>(vag.size()));
+    }
+    PcmBuffer fromFile;
+    CHECK(loadVagFile(path, fromFile));
+    CHECK_EQ_I32(int(fromFile.frames), int(expected.size()));
+    CHECK(fromFile.samples == expected);
+
+    {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        std::uint8_t truncatedHeader[kVagBlockBytes] = {'V', 'A', 'G', 'p'};
+        file.write(reinterpret_cast<const char*>(truncatedHeader), sizeof(truncatedHeader));
+    }
+    PcmBuffer invalid;
+    CHECK(!loadVagFile(path, invalid));
+    std::error_code removeError;
+    std::filesystem::remove(path, removeError);
+    CHECK(!removeError);
 }
 
 // --------- Mixer tests ------------------------------------------------------
@@ -466,6 +538,7 @@ int main() {
     testVagReferenceBlock();
     testVagTruncated();
     testVagHeader();
+    testVagLoader();
     testMixerSumAndCenter();
     testMixerPan();
     testMixerStereoCenter();

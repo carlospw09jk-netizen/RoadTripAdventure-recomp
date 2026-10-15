@@ -2,6 +2,7 @@
 // rendered by previewRenderScene(), so this presentation layer deliberately
 // contains no duplicate road/car/shader code.
 #include "assets/native_model.h"
+#include "audio/engine.h"
 #include "gameplay/game_loop.h"
 #include "gameplay/input.h"
 #include "gameplay/menu.h"
@@ -13,9 +14,12 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -44,6 +48,85 @@ struct Presenter {
     VkFence frameDone = VK_NULL_HANDLE;
     VkPhysicalDeviceMemoryProperties memory{};
 };
+
+constexpr int kAudioSampleRate = 48000;
+constexpr int kAudioChannels = 2;
+
+struct AudioHost {
+    rt::native::audio::SoundEngine engine;
+    std::vector<std::int16_t> bgm;
+    SDL_AudioStream* stream = nullptr;
+    std::atomic<bool> loggedFirstPeak = false;
+    std::atomic<int> peakSinceLog = 0;
+    std::atomic<int> framesSinceLog = 0;
+};
+
+void SDLCALL fillAudio(void* userdata, SDL_AudioStream* stream, int additionalBytes, int) {
+    auto& audio = *static_cast<AudioHost*>(userdata);
+    const int frames = additionalBytes / (kAudioChannels * static_cast<int>(sizeof(std::int16_t)));
+    if (frames <= 0) return;
+
+    rt::native::audio::OutputBuffer output;
+    output.channels = kAudioChannels;
+    output.samples.resize(static_cast<std::size_t>(frames) * output.channels);
+    audio.engine.tick(frames, output);
+
+    int peak = 0;
+    for (const std::int16_t sample : output.samples) {
+        const int magnitude = sample < 0 ? -static_cast<int>(sample) : static_cast<int>(sample);
+        peak = std::max(peak, magnitude);
+    }
+    int observed = audio.peakSinceLog.load(std::memory_order_relaxed);
+    while (observed < peak && !audio.peakSinceLog.compare_exchange_weak(
+               observed, peak, std::memory_order_relaxed)) {}
+
+    const int totalFrames = audio.framesSinceLog.fetch_add(frames, std::memory_order_relaxed) + frames;
+    bool expected = false;
+    if (audio.loggedFirstPeak.compare_exchange_strong(expected, true, std::memory_order_relaxed)) {
+        std::fprintf(stderr, "rt-app audio callback frames=%d peak=%d\n", frames, peak);
+    }
+    if (totalFrames >= kAudioSampleRate) {
+        const int intervalPeak = audio.peakSinceLog.exchange(0, std::memory_order_relaxed);
+        audio.framesSinceLog.fetch_sub(kAudioSampleRate, std::memory_order_relaxed);
+        std::fprintf(stderr, "rt-app audio peak=%d\n", intervalPeak);
+    }
+    (void)SDL_PutAudioStreamData(stream, output.samples.data(),
+                                 static_cast<int>(output.samples.size() * sizeof(std::int16_t)));
+}
+
+bool initAudio(AudioHost& audio) {
+    // A one-second synthetic saw wave proves the SoundEngine -> SDL output path
+    // without needing any disc-derived audio data. Its lifetime is the host's.
+    audio.bgm.resize(kAudioSampleRate);
+    for (int i = 0; i < kAudioSampleRate; ++i) {
+        audio.bgm[static_cast<std::size_t>(i)] = static_cast<std::int16_t>((i % 240) * 100 - 12000);
+    }
+    audio.engine.setMasterVolume(.25f);
+    audio.engine.playBgm(0, 0x0a1c0201u,
+                         {audio.bgm.data(), audio.bgm.size(), true}, .7f);
+
+    const SDL_AudioSpec spec{SDL_AUDIO_S16, kAudioChannels, kAudioSampleRate};
+    audio.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
+                                             &spec, fillAudio, &audio);
+    if (!audio.stream) {
+        std::cerr << "SDL audio disabled: " << SDL_GetError() << "\n";
+        return false;
+    }
+    if (!SDL_ResumeAudioStreamDevice(audio.stream)) {
+        std::cerr << "SDL audio disabled: " << SDL_GetError() << "\n";
+        SDL_DestroyAudioStream(audio.stream);
+        audio.stream = nullptr;
+        return false;
+    }
+    std::cout << "rt-app audio device opened: 48000 Hz, S16, stereo\n";
+    return true;
+}
+
+void destroyAudio(AudioHost& audio) {
+    if (audio.stream) SDL_DestroyAudioStream(audio.stream);
+    audio.stream = nullptr;
+    audio.engine.stopAll();
+}
 
 bool vkOk(VkResult result, const char* what, std::string& error) {
     if (result == VK_SUCCESS) return true;
@@ -268,7 +351,7 @@ std::vector<rt::native::preview::ScreenQuad> menuQuads(
 
 int main() {
     constexpr int kInitialWidth = 800, kInitialHeight = 600;
-    if (!SDL_Init(SDL_INIT_VIDEO)) { std::cerr << "SDL_Init: " << SDL_GetError() << "\n"; return 1; }
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) { std::cerr << "SDL_Init: " << SDL_GetError() << "\n"; return 1; }
     SDL_Window* window = SDL_CreateWindow("Road Trip authored scene", kInitialWidth, kInitialHeight, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
     if (!window) { std::cerr << "SDL_CreateWindow: " << SDL_GetError() << "\n"; SDL_Quit(); return 1; }
     Presenter presenter; std::string error;
@@ -277,6 +360,8 @@ int main() {
     rt::native::preview::Renderer* renderer = rt::native::preview::previewInit(width, height, error, nullptr);
     if (!renderer) { std::cerr << "scene renderer init: " << error << "\n"; destroy(presenter); SDL_DestroyWindow(window); SDL_Quit(); return 1; }
     const bool noRender = std::getenv("RT_APP_NORENDER") != nullptr; const int maxFrames = envFrames();
+    AudioHost audio;
+    if (std::getenv("RT_APP_NOAUDIO") == nullptr) (void)initAudio(audio);
     const auto recreateSwapchain = [&]() {
         int newW = 0, newH = 0; SDL_GetWindowSizeInPixels(window, &newW, &newH);
         if (newW <= 0 || newH <= 0) return true;
@@ -366,6 +451,7 @@ int main() {
         ++frames;
     }
     std::cout << "rt-app frames=" << frames << " simulation_frame=" << simulationFrame << "\n";
+    destroyAudio(audio);
     rt::native::preview::previewDestroy(renderer); destroy(presenter); SDL_DestroyWindow(window); SDL_Quit();
     return 0;
 }

@@ -40,6 +40,7 @@ set(RT_NATIVE_ASSET_SOURCES
     gameplay/car_physics.cpp    # authored car-physics tick (no guest code)
     gameplay/camera.cpp         # authored chase camera (spring/slew + look-at view matrix)
     gameplay/task.cpp           # authored task scheduler (48-slot pool + parent/sibling tree)
+    gameplay/dialogue.cpp       # authored NPC dialogue line and input-advance model
     gameplay/ai.cpp             # authored waypoint traffic brain (no guest code)
     gameplay/world.cpp          # authored world/field model (8x8 cells, road path, cull)
     gameplay/daynight.cpp       # authored day/night lighting cycle (phase bands, fog, light-matrix blend)
@@ -55,6 +56,7 @@ set(RT_NATIVE_ASSET_SOURCES
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
     gameplay/progression.cpp    # authored progression mutations over the documented save fields
+    gameplay/shop.cpp           # authored item-shop buy/sell and selection model
     gameplay/memcard.cpp        # host-file replacement for two memory-card save slots
     gameplay/menu.cpp           # authored menu, pause, and controller-config state models
     gameplay/input.cpp          # authored player input (pad/analog -> CarInput)
@@ -204,6 +206,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_compile_features(native_assets_task_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_task_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
+    add_executable(native_assets_dialogue_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_dialogue.cpp")
+    target_link_libraries(native_assets_dialogue_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_dialogue_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_dialogue_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
     add_executable(native_assets_save_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_save.cpp")
     target_link_libraries(native_assets_save_test PRIVATE rt_native_assets)
@@ -215,6 +223,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_progression_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_progression_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_progression_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_shop_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_shop.cpp")
+    target_link_libraries(native_assets_shop_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_shop_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_shop_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_memcard_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_memcard.cpp")
@@ -349,6 +363,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_texture_integration_test
             native_assets_edges_integration_test
             native_assets_audio_test
+            native_assets_dialogue_test
             native_assets_menu_test
             native_assets_input_test
             native_assets_world_test
@@ -356,6 +371,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_engine_test
             native_assets_save_test
             native_assets_progression_test
+            native_assets_shop_test
             native_assets_memcard_test
             native_assets_daynight_test
             native_assets_daycycle_test)

@@ -44,6 +44,7 @@ set(RT_NATIVE_ASSET_SOURCES
     gameplay/world.cpp          # authored world/field model (8x8 cells, road path, cull)
     gameplay/daynight.cpp       # authored day/night lighting cycle (phase bands, fog, light-matrix blend)
     gameplay/daycycle.cpp       # authored scripted day/night lighting step machine
+    gameplay/race.cpp           # authored race timer, best records, and standings
     audio/vag.cpp               # authored PS ADPCM (VAG) decoder (no PS2/guest code)
     audio/mixer.cpp             # authored mixer model: N channels -> stereo out, no device
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
@@ -244,6 +245,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_compile_features(native_assets_daycycle_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_daycycle_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
+    add_executable(native_assets_race_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_race.cpp")
+    target_link_libraries(native_assets_race_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_race_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_race_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
     add_executable(native_assets_game_loop_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_game_loop.cpp")
     target_link_libraries(native_assets_game_loop_test PRIVATE rt_native_assets)
@@ -315,6 +322,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_memcard_test
             native_assets_daynight_test
             native_assets_daycycle_test)
+        list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_race_test)
     endif()
     foreach(rt_native_cov_target IN LISTS RT_NATIVE_COVERAGE_TARGETS)
         target_compile_options(${rt_native_cov_target} PRIVATE ${RT_NATIVE_COVERAGE_FLAGS})

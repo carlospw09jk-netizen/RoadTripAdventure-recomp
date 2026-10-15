@@ -145,6 +145,88 @@ void testRejectsMeshVertexRangeOutsideFile() {
           "descriptor mesh: out-of-file vertex range identifies vertex offset");
 }
 
+// Minimal synthetic tile honouring the decoded layout: header, 65-entry
+// sub-block directory relative to offA, 256-entry attribute table, DMA-tag
+// sub-block region, and a PMP block (magic + strictly increasing relative
+// section table + extension word at +0x180 for 0x608).
+Bytes buildCatalogTile(std::uint32_t magic, bool monotonicDirectory) {
+    const auto pushU32 = [](Bytes& bytes, std::uint32_t value) {
+        bytes.push_back(static_cast<std::uint8_t>(value & 0xFF));
+        bytes.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFF));
+        bytes.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFF));
+        bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFF));
+    };
+    const std::uint32_t offA = 0x20;
+    const std::uint32_t subRegionBytes = 0x80;
+    const std::uint32_t offB = offA + 65 * 4 + 256 * 4 + subRegionBytes;
+    const std::uint32_t pmpSpan = 0x1C4;
+    const std::uint32_t offC = offB + pmpSpan;
+
+    Bytes bytes;
+    pushU32(bytes, 0x20);
+    pushU32(bytes, offA);
+    pushU32(bytes, offB);
+    pushU32(bytes, offC);
+    pushU32(bytes, offC + 8);
+    pushU32(bytes, 0);  // header reserved words (region is 0x20 bytes)
+    pushU32(bytes, 0);
+    pushU32(bytes, 0);
+    for (std::uint32_t entry = 0; entry < 65; ++entry) {
+        std::uint32_t value = 0;
+        if (entry == 0) value = monotonicDirectory ? 0x40 : 0x80;
+        if (entry == 1) value = monotonicDirectory ? 0x80 : 0x40;
+        pushU32(bytes, value);
+    }
+    for (std::uint32_t entry = 0; entry < 256; ++entry) {
+        pushU32(bytes, entry < 2 ? 0xABC000u + entry : 0);
+    }
+    while (bytes.size() < offB) pushU32(bytes, 0x10000259);
+    pushU32(bytes, magic);
+    pushU32(bytes, 0x20);
+    pushU32(bytes, 0x40);
+    pushU32(bytes, 0x60);
+    while (bytes.size() < offB + 0x180) pushU32(bytes, 0);
+    pushU32(bytes, 0x184);  // extension offset, relative to offB
+    while (bytes.size() < offC + 8) pushU32(bytes, 0);
+    return bytes;
+}
+
+void testCatalogValid() {
+    const Bytes bytes = buildCatalogTile(0x608, true);
+    const auto catalog = rt::native::assets::catalogFieldTile(bytes);
+    check(catalog.has_value(), "catalog: valid synthetic tile parses");
+    if (!catalog) return;
+    check(catalog->subBlocks.size() == 2, "catalog: two non-zero directory entries found");
+    check(catalog->subBlocks[0] == 0x20 + 0x40 && catalog->subBlocks[1] == 0x20 + 0x80,
+          "catalog: sub-block targets are directory-relative");
+    check(catalog->attributeCount == 2, "catalog: attribute count");
+    check(catalog->pmpMagic == 0x608, "catalog: new-style magic");
+    check(catalog->pmpSections.size() == 3, "catalog: three sections");
+    const std::uint32_t offB = 0x20 + 65 * 4 + 256 * 4 + 0x80;
+    check(catalog->pmpSections[0] == offB + 0x20 &&
+          catalog->pmpSections[2] == offB + 0x60,
+          "catalog: section targets are offB-relative");
+    check(catalog->pmpExtensionOffset == offB + 0x184,
+          "catalog: new-style extension offset resolved");
+
+    const Bytes oldStyle = buildCatalogTile(0x600, true);
+    const auto oldCatalog = rt::native::assets::catalogFieldTile(oldStyle);
+    check(oldCatalog.has_value() && oldCatalog->pmpMagic == 0x600 &&
+          oldCatalog->pmpExtensionOffset == 0,
+          "catalog: old-style magic accepted with no extension");
+}
+
+void testCatalogRejectsBadShapes() {
+    const Bytes badMagic = buildCatalogTile(0x601, true);
+    check(rt::native::assets::catalogFieldTile(badMagic).error() ==
+              FieldTileError::BadHeader,
+          "catalog: unknown PMP magic rejected");
+    const Bytes nonMonotonic = buildCatalogTile(0x608, false);
+    check(rt::native::assets::catalogFieldTile(nonMonotonic).error() ==
+              FieldTileError::BadHeader,
+          "catalog: non-monotonic directory rejected");
+}
+
 std::filesystem::path discRoot() {
     if (const char* root = std::getenv("RT_DISC")) {
         return root;
@@ -174,6 +256,21 @@ void testRealFieldTileWhenAvailable() {
     check(header->offB == 1778832, "real FLD/000.BIN: offB");
     check(header->offC == 2505600, "real FLD/000.BIN: offC");
     check(header->fileSize == 2506352, "real FLD/000.BIN: fileSize");
+
+    const auto catalog = rt::native::assets::catalogFieldTile(bytes);
+    check(catalog.has_value(), "real FLD/000.BIN: catalog parses");
+    if (catalog) {
+        check(catalog->subBlocks.size() == 65, "real FLD/000.BIN: 65 sub-blocks");
+        check(catalog->attributeCount == 248, "real FLD/000.BIN: 248 attributes");
+        check(catalog->pmpMagic == 0x608, "real FLD/000.BIN: new-style PMP magic");
+        check(catalog->pmpSections.size() >= 16, "real FLD/000.BIN: section table");
+        check(catalog->pmpExtensionOffset == header->offB + 0x2d838,
+              "real FLD/000.BIN: extension offset");
+        std::cout << "test_field_converter: FLD/000.BIN catalog sub-blocks="
+                  << catalog->subBlocks.size() << " attributes="
+                  << catalog->attributeCount << " pmp-sections="
+                  << catalog->pmpSections.size() << '\n';
+    }
 
     const FieldTileResult result =
         convertFieldTile(bytes, "FLD/000.BIN", testDigest());
@@ -225,6 +322,50 @@ void testRealFieldTileWhenAvailable() {
     }
 }
 
+void testCatalogCorpusWhenAvailable() {
+    const std::filesystem::path dir = discRoot() / "FLD";
+    if (dir.empty() || !std::filesystem::exists(dir)) {
+        std::cout << "test_field_converter: SKIP FLD catalog corpus (not found)\n";
+        return;
+    }
+    std::size_t total = 0;
+    std::size_t parsed = 0;
+    std::size_t variantLayout = 0;
+    std::size_t variantHeader = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+        if (entry.path().extension() != ".BIN") {
+            continue;
+        }
+        std::ifstream input(entry.path(), std::ios::binary);
+        const Bytes bytes((std::istreambuf_iterator<char>(input)),
+                         std::istreambuf_iterator<char>());
+        ++total;
+        if (rt::native::assets::catalogFieldTile(bytes)) {
+            ++parsed;
+            continue;
+        }
+        // Distinguish the known variant population: files whose first word is
+        // not the 0x20 header marker versus files with the marker but a
+        // region-offset ordering that differs (offB < offA observed).
+        if (bytes.size() >= 8 && rt::native::assets::parseFieldTileHeader(bytes).error() ==
+                                     FieldTileError::BadHeader &&
+            bytes[0] == 0x20) {
+            ++variantLayout;
+        } else {
+            ++variantHeader;
+        }
+    }
+    // 50/64 tiles are canonical; 13 use an alternate region ordering and one
+    // (023.BIN) carries a 0x160 header.  Variants are documented in
+    // docs/native-reference/field-topology-status.md and parsed later.
+    check(total == 64, "catalog corpus: 64 tiles present");
+    check(parsed == 50 && variantLayout == 13 && variantHeader == 1,
+          "catalog corpus: 50 canonical / 13 layout variants / 1 header variant");
+    std::cout << "test_field_converter: catalog corpus canonical=" << parsed
+              << " layout-variants=" << variantLayout
+              << " header-variants=" << variantHeader << " of " << total << '\n';
+}
+
 } // namespace
 
 int main() {
@@ -232,7 +373,10 @@ int main() {
     testOffsetPastFileIsBadHeader();
     testConvertsDescriptorVerticesAndSharedIndices();
     testRejectsMeshVertexRangeOutsideFile();
+    testCatalogValid();
+    testCatalogRejectsBadShapes();
     testRealFieldTileWhenAvailable();
+    testCatalogCorpusWhenAvailable();
 
     std::cout << "test_field_converter: " << (g_checks - g_failures) << "/" << g_checks
               << " checks passed\n";

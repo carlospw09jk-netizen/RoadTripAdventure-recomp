@@ -10,6 +10,8 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
+#include <vector>
 
 namespace rt::native::assets {
 
@@ -47,6 +49,23 @@ struct FieldTileHeader {
     std::uint32_t offC = 0;
     std::uint32_t fileSize = 0;
 };
+
+// Decoded tile catalog mirroring the runtime loader semantics (see
+// docs/native-reference/field-topology-status.md): a 65-entry sub-block
+// directory relative to offA, a 256-entry attribute table, and a PMP model
+// block (magic 0x600 old / 0x608 new) at offB with a relative section
+// pointer table.
+struct FieldTileCatalog {
+    FieldTileHeader header{};
+    std::vector<std::uint32_t> subBlocks;    // absolute file offsets of sub-block DMA tag words
+    std::uint32_t attributeCount = 0;        // non-zero entries in the 256-entry attribute table
+    std::uint32_t pmpMagic = 0;              // 0x600 or 0x608
+    std::vector<std::uint32_t> pmpSections;  // absolute file offsets, strictly increasing
+    std::uint32_t pmpExtensionOffset = 0;    // absolute; 0 for old-style (0x600) blocks
+};
+
+expected<FieldTileCatalog, FieldTileError>
+catalogFieldTile(std::span<const std::uint8_t> tileFile);
 
 expected<FieldTileHeader, FieldTileError>
 parseFieldTileHeader(std::span<const std::uint8_t> tileFile);

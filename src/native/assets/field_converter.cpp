@@ -20,6 +20,11 @@ constexpr std::size_t kFieldVertexFloatCount = 6;
 constexpr std::size_t kFieldVertexBytes = kFieldVertexFloatCount * sizeof(float);
 constexpr std::size_t kIndexBufferOffset = 0x50A6;
 constexpr std::uint32_t kMaterialDescriptorTag = 0x1012B42C;
+constexpr std::size_t kSubBlockDirectoryEntries = 65;
+constexpr std::size_t kAttributeTableEntries = 256;
+constexpr std::uint32_t kPmpMagicOld = 0x600;
+constexpr std::uint32_t kPmpMagicNew = 0x608;
+constexpr std::size_t kPmpExtensionWordOffset = 0x180;
 
 std::uint32_t readU32LE(std::span<const std::uint8_t> bytes, std::size_t offset) noexcept {
     return static_cast<std::uint32_t>(bytes[offset]) |
@@ -82,6 +87,89 @@ parseFieldTileHeader(std::span<const std::uint8_t> tileFile) {
         return FieldTileError::BadHeader;
     }
     return header;
+}
+
+expected<FieldTileCatalog, FieldTileError>
+catalogFieldTile(std::span<const std::uint8_t> tileFile) {
+    const auto header = parseFieldTileHeader(tileFile);
+    if (!header) {
+        return header.error();
+    }
+
+    FieldTileCatalog catalog;
+    catalog.header = *header;
+
+    const std::size_t directory = header->offA;
+    const std::size_t attributes =
+        directory + kSubBlockDirectoryEntries * sizeof(std::uint32_t);
+    if (attributes + kAttributeTableEntries * sizeof(std::uint32_t) > tileFile.size()) {
+        return FieldTileError::Truncated;
+    }
+
+    std::uint32_t previous = 0;
+    for (std::size_t entry = 0; entry < kSubBlockDirectoryEntries; ++entry) {
+        const std::uint32_t relative =
+            readU32LE(tileFile, directory + entry * sizeof(std::uint32_t));
+        if (relative == 0) {
+            continue;  // unused slot
+        }
+        if (relative < previous) {
+            return FieldTileError::BadHeader;
+        }
+        previous = relative;
+        const std::uint64_t absolute = static_cast<std::uint64_t>(directory) + relative;
+        if (absolute + sizeof(std::uint32_t) > tileFile.size()) {
+            return FieldTileError::Truncated;
+        }
+        catalog.subBlocks.push_back(static_cast<std::uint32_t>(absolute));
+    }
+    if (catalog.subBlocks.empty()) {
+        return FieldTileError::BadHeader;
+    }
+
+    for (std::size_t entry = 0; entry < kAttributeTableEntries; ++entry) {
+        if (readU32LE(tileFile, attributes + entry * sizeof(std::uint32_t)) != 0) {
+            ++catalog.attributeCount;
+        }
+    }
+
+    const std::size_t pmp = header->offB;
+    if (pmp + sizeof(std::uint32_t) > tileFile.size()) {
+        return FieldTileError::Truncated;
+    }
+    catalog.pmpMagic = readU32LE(tileFile, pmp);
+    if (catalog.pmpMagic != kPmpMagicOld && catalog.pmpMagic != kPmpMagicNew) {
+        return FieldTileError::BadHeader;
+    }
+
+    const std::uint32_t pmpSpan = header->offC - header->offB;
+    std::uint32_t sectionPrevious = 0;
+    for (std::size_t word = sizeof(std::uint32_t);
+         word + sizeof(std::uint32_t) <= pmpSpan && pmp + word + sizeof(std::uint32_t) <= tileFile.size();
+         word += sizeof(std::uint32_t)) {
+        const std::uint32_t relative = readU32LE(tileFile, pmp + word);
+        if (relative <= sectionPrevious || relative >= pmpSpan) {
+            break;
+        }
+        sectionPrevious = relative;
+        catalog.pmpSections.push_back(static_cast<std::uint32_t>(pmp + relative));
+    }
+    if (catalog.pmpSections.empty()) {
+        return FieldTileError::BadHeader;
+    }
+
+    if (catalog.pmpMagic == kPmpMagicNew) {
+        if (pmp + kPmpExtensionWordOffset + sizeof(std::uint32_t) > tileFile.size()) {
+            return FieldTileError::Truncated;
+        }
+        const std::uint32_t relative = readU32LE(tileFile, pmp + kPmpExtensionWordOffset);
+        if (relative >= pmpSpan) {
+            return FieldTileError::BadHeader;
+        }
+        catalog.pmpExtensionOffset = static_cast<std::uint32_t>(pmp + relative);
+    }
+
+    return catalog;
 }
 
 FieldTileResult convertFieldTile(std::span<const std::uint8_t> tileFile,
@@ -174,7 +262,8 @@ FieldTileResult convertFieldTile(std::span<const std::uint8_t> tileFile,
         }
     }
 
-    // TODO: parse the offA..offB / offB..offC directories and offC texture data.
+    // Directory/attribute/PMP structure is validated by catalogFieldTile();
+    // mesh extraction beyond vertex records still follows the legacy path here.
     result.value.version = kContainerVersion;
     result.value.meshes = std::move(meshes);
     return result;

@@ -2,6 +2,7 @@
 // rendered by previewRenderScene(), so this presentation layer deliberately
 // contains no duplicate road/car/shader code.
 #include "assets/native_model.h"
+#include "audio/bgm_player.h"
 #include "audio/engine.h"
 #include "audio/vag_loader.h"
 #include "gameplay/collectibles.h"
@@ -25,6 +26,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -60,6 +62,8 @@ constexpr int kAudioChannels = 2;
 struct AudioHost {
     rt::native::audio::SoundEngine engine;
     std::vector<std::int16_t> bgm;
+    rt::native::audio::BgmPlayer tsqBgm;
+    bool usingTsqBgm = false;
     SDL_AudioStream* stream = nullptr;
     std::atomic<bool> loggedFirstPeak = false;
     std::atomic<int> peakSinceLog = 0;
@@ -74,7 +78,15 @@ void SDLCALL fillAudio(void* userdata, SDL_AudioStream* stream, int additionalBy
     rt::native::audio::OutputBuffer output;
     output.channels = kAudioChannels;
     output.samples.resize(static_cast<std::size_t>(frames) * output.channels);
-    audio.engine.tick(frames, output);
+    if (audio.usingTsqBgm) {
+        audio.tsqBgm.pump(output.samples.data(), static_cast<std::size_t>(frames));
+        // Keep the TSQ source at the same conservative combined BGM/master
+        // gain used by the VAG SoundEngine path below.
+        for (auto& sample : output.samples)
+            sample = static_cast<std::int16_t>(static_cast<float>(sample) * (.25f * .7f));
+    } else {
+        audio.engine.tick(frames, output);
+    }
 
     int peak = 0;
     for (const std::int16_t sample : output.samples) {
@@ -101,22 +113,39 @@ void SDLCALL fillAudio(void* userdata, SDL_AudioStream* stream, int additionalBy
 
 bool initAudio(AudioHost& audio) {
     const char* bgmPath = std::getenv("RT_APP_BGM");
-    rt::native::audio::PcmBuffer loadedBgm;
-    if (bgmPath && *bgmPath && rt::native::audio::loadVagFile(bgmPath, loadedBgm)) {
-        audio.bgm = std::move(loadedBgm.samples);
-        std::cout << "rt-app BGM loaded: " << bgmPath << " (" << audio.bgm.size() << " frames)\n";
+    const char* tsqSetting = std::getenv("RT_APP_BGM_TSQ");
+    const bool tsqDisabled = tsqSetting && std::strcmp(tsqSetting, "0") == 0;
+    const std::filesystem::path discRoot = [] {
+        if (const char* root = std::getenv("RT_DISC")) return std::filesystem::path(root);
+        if (const char* home = std::getenv("HOME"))
+            return std::filesystem::path(home) / "Library/Application Support/RoadTripRecomp/disc";
+        return std::filesystem::path{};
+    }();
+    const std::string selectedTrack = bgmPath && *bgmPath ? bgmPath : "BGM_01";
+    if (!tsqDisabled && audio.tsqBgm.load(discRoot, selectedTrack)) {
+        audio.usingTsqBgm = true;
+        std::cout << "rt-app BGM TSQ loaded: " << selectedTrack
+                  << " from " << (discRoot / "SOUND") << "\n";
     } else {
-        if (bgmPath && *bgmPath) std::cerr << "rt-app BGM load failed, using synthetic tone: " << bgmPath << "\n";
-        // A one-second synthetic saw wave keeps the output path usable when no
-        // BGM file is selected. Its lifetime is the host's.
-        audio.bgm.resize(kAudioSampleRate);
-        for (int i = 0; i < kAudioSampleRate; ++i) {
-            audio.bgm[static_cast<std::size_t>(i)] = static_cast<std::int16_t>((i % 240) * 100 - 12000);
+        rt::native::audio::PcmBuffer loadedBgm;
+        if (bgmPath && *bgmPath && rt::native::audio::loadVagFile(bgmPath, loadedBgm)) {
+            audio.bgm = std::move(loadedBgm.samples);
+            std::cout << "rt-app BGM loaded: " << bgmPath << " (" << audio.bgm.size() << " frames)\n";
+        } else {
+            if (bgmPath && *bgmPath)
+                std::cerr << "rt-app BGM load failed, using synthetic tone: " << bgmPath << "\n";
+            // A one-second synthetic saw wave keeps the output path usable when no
+            // BGM file is selected. Its lifetime is the host's.
+            audio.bgm.resize(kAudioSampleRate);
+            for (int i = 0; i < kAudioSampleRate; ++i) {
+                audio.bgm[static_cast<std::size_t>(i)] =
+                    static_cast<std::int16_t>((i % 240) * 100 - 12000);
+            }
         }
+        audio.engine.setMasterVolume(.25f);
+        audio.engine.playBgm(0, 0x0a1c0201u,
+                             {audio.bgm.data(), audio.bgm.size(), true}, .7f);
     }
-    audio.engine.setMasterVolume(.25f);
-    audio.engine.playBgm(0, 0x0a1c0201u,
-                         {audio.bgm.data(), audio.bgm.size(), true}, .7f);
 
     const SDL_AudioSpec spec{SDL_AUDIO_S16, kAudioChannels, kAudioSampleRate};
     audio.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,

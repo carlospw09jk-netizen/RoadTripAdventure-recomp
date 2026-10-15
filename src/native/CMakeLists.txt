@@ -60,6 +60,7 @@ set(RT_NATIVE_ASSET_SOURCES
     audio/mixer.cpp             # authored mixer model: N channels -> stereo out, no device
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
     audio/music_library.cpp     # injected BGM file-table index -> VAG resolver + SoundEngine bridge
+    audio/bgm_player.cpp        # bounded TSQ+TVB BGM pre-render and stereo PCM loop player
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
     gameplay/progression.cpp    # authored progression mutations over the documented save fields
     gameplay/collectibles.cpp   # authored stamp and coin pickup model
@@ -230,6 +231,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_tsq_sequencer_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_tsq_sequencer_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_tsq_sequencer_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_bgm_player_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_bgm_player.cpp")
+    target_link_libraries(native_assets_bgm_player_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_bgm_player_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_bgm_player_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_camera_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_camera.cpp")

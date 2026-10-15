@@ -13,11 +13,13 @@ void GameLoop::reset() {
     tasks_ = TaskPool();
     car_ = CarState();
     camera_ = CameraState();
+    raceTracker_ = RaceTracker(0);
     lapCount_ = 0;
     waypointsPassed_ = 0;
     frame_ = 0;
     clock_ = params_.initialClock;
     lighting_ = DayNightOutput();
+    raceFinished_ = false;
     pipelineTicks_ = 0;
 
     path_ = world_.roadWaypoints;
@@ -90,7 +92,25 @@ FrameSnapshot GameLoop::makeSnapshot() {
     s.frame = frame_;
     s.clock = clock_;
     s.lighting = lighting_;
+    if (params_.raceMode) {
+        s.lap = static_cast<int>(raceTracker_.lapCount());
+        s.elapsedFrames = raceTracker_.elapsedFrames();
+        s.bestLap = raceTracker_.bestLap();
+        s.finished = raceFinished_;
+        s.rank = getRaceTimeRank(raceFinished_ ? raceTracker_.totalFrames() : raceTracker_.elapsedFrames());
+    }
     return s;
+}
+
+void GameLoop::completeLap() {
+    ++lapCount_;
+    if (!params_.raceMode) return;
+
+    raceTracker_.completeLap();
+    if (!raceFinished_ && lapCount_ >= params_.totalLaps) {
+        raceTracker_.finishRace();
+        raceFinished_ = true;
+    }
 }
 
 FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
@@ -102,12 +122,13 @@ FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
     const int n = static_cast<int>(world_.roadWaypoints.size());
 
     tasks_.tick();  // (a) task walker pass
+    if (params_.raceMode) raceTracker_.tick();
 
     for (int k = 0; k < params_.physicsTicksPerFrame; ++k) {
         const int before = ai_.waypointIndex;
         if (n > 0 && ai_.waypointIndex >= n) {  // tickAi stops at the last waypoint: wrap = lap
             ai_.waypointIndex = 0;
-            ++lapCount_;
+            completeLap();
         }
         const AiOutput cmd = tickAi(ai_, car_, path_, aiParams);  // (b)
         if (ai_.waypointIndex != before) ++waypointsPassed_;
@@ -122,6 +143,7 @@ FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
 
 FrameSnapshot GameLoop::tickPlayer(float /*dt*/, const MenuInput& /*menuInput*/, const CarInput& input) {
     tasks_.tick();  // (a) task walker pass
+    if (params_.raceMode) raceTracker_.tick();
     for (int k = 0; k < params_.physicsTicksPerFrame; ++k) integrateCar(input);
     return makeSnapshot();
 }

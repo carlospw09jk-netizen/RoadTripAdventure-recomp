@@ -152,6 +152,25 @@ static void testPlayerInputDrivesCar() {
     CHECK(slowed.speed < accelerated.speed);
 }
 
+static void testRaceModeTracksLapsAndFinish() {
+    const MenuInput mi;
+    GameLoopParams raceParams;
+    raceParams.raceMode = true;
+    raceParams.totalLaps = 1;
+    GameLoop race(raceParams);
+    FrameSnapshot raceSnapshot;
+    for (int i = 0; i < 130; ++i) raceSnapshot = race.tick(1.f / 60.f, mi);
+    CHECK(raceSnapshot.finished);
+    CHECK(raceSnapshot.lap == 1);
+    CHECK(raceSnapshot.elapsedFrames > 0);
+    CHECK(raceSnapshot.rank >= 0 && raceSnapshot.rank <= 2);
+
+    GameLoop freeDrive;
+    FrameSnapshot freeDriveSnapshot;
+    for (int i = 0; i < 130; ++i) freeDriveSnapshot = freeDrive.tick(1.f / 60.f, mi);
+    CHECK(!freeDriveSnapshot.finished);
+}
+
 int main() {
     testResetAndFirstTick();
     testLapCorridorCamera();
@@ -159,6 +178,7 @@ int main() {
     testLighting();
     testDeterminism();
     testPlayerInputDrivesCar();
+    testRaceModeTracksLapsAndFinish();
     if (g_fail) { std::fprintf(stderr, "%d failure(s)\n", g_fail); return 1; }
     std::puts("game_loop tests passed");
     return 0;

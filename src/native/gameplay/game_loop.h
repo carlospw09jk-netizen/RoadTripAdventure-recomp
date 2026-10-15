@@ -12,6 +12,7 @@
 #include "gameplay/car_state.h"
 #include "gameplay/daynight.h"
 #include "gameplay/menu.h"
+#include "gameplay/race.h"
 #include "gameplay/task.h"
 #include "gameplay/world.h"
 
@@ -46,6 +47,10 @@ struct GameLoopParams {
     // Time of day: starting clock (vblanks since midnight, wraps at kDayTicks).
     std::uint32_t initialClock = 0;
 
+    // Race timing is opt-in so the default remains a free drive.
+    bool raceMode = false;
+    int totalLaps = 3;
+
     // Cull
     float viewDistance = kDefaultViewDistance;
 };
@@ -65,6 +70,11 @@ struct FrameSnapshot {
     std::uint64_t frame = 0;  // frames simulated since reset()
     std::uint32_t clock = 0;  // time-of-day clock after this frame's advance
     DayNightOutput lighting;  // updateTimeOfDayLight(0, clock) for this frame
+    int lap = 0;                       // completed race laps (race mode only)
+    std::uint32_t elapsedFrames = 0;   // race frames elapsed (race mode only)
+    std::uint32_t bestLap = 0;         // best completed lap (race mode only)
+    bool finished = false;             // race crossed the configured lap count
+    int rank = 0;                      // getRaceTimeRank for the current/final time
 };
 
 class GameLoop {
@@ -96,14 +106,17 @@ private:
     AiState ai_;
     CameraState camera_;
     WaypointPath path_;
+    RaceTracker raceTracker_{0};
     int lapCount_ = 0;
     int waypointsPassed_ = 0;
     std::uint64_t frame_ = 0;
     std::uint32_t clock_ = 0;
     DayNightOutput lighting_;
+    bool raceFinished_ = false;
     std::uint32_t pipelineTicks_ = 0;  // bumped by the spawned frame task
 
     void integrateCar(const CarInput& input);
+    void completeLap();
     FrameSnapshot makeSnapshot();
 };
 

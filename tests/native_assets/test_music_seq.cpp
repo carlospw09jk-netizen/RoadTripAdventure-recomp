@@ -2,7 +2,9 @@
 // Synthetic fixtures cover wire validation; a present local disc adds a
 // read-only integration check without putting game data in the repository.
 #include "../../src/native/assets/music_seq.h"
+#include "../../src/native/audio/vag.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -11,6 +13,7 @@
 #include <vector>
 
 using namespace rt::native::assets;
+namespace audio = rt::native::audio;
 
 static int g_fail = 0;
 #define CHECK(c) do { if (!(c)) { std::fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); ++g_fail; } } while (0)
@@ -43,6 +46,49 @@ static void testParsesTvbSampleOffsets() {
 
     put32(bytes, 4 * 4, 0x111);
     CHECK(!parseTvb(bytes));
+}
+
+// TVB's table starts after the two leading non-sample program entries.  The
+// raw blocks have no VAGp header and must be decoded all the way through even
+// when their flag byte is an otherwise meaningful VAG stream marker.
+static void testDecodesHeaderlessTvbSampleBlocks() {
+    std::vector<std::uint8_t> bytes(0x440, 0);
+    put32(bytes, 2 * 4, 0x400);
+    put32(bytes, 3 * 4, 0x420);
+    for (std::size_t i = 4; i < kTvbProgramCount; ++i) put32(bytes, i * 4, 0x420);
+
+    audio::VagNibbles first;
+    first.shift = 12;
+    first.filter = 0;
+    for (std::size_t i = 0; i < 28; ++i) first.nibbles[i] = static_cast<std::uint8_t>(i & 0xf);
+    audio::buildVagBlock(first, bytes.data() + 0x400);
+
+    audio::VagNibbles second;
+    second.shift = 12;
+    second.filter = 0;
+    second.flags = audio::kVagEndOfStream;
+    for (std::size_t i = 0; i < 28; ++i) second.nibbles[i] = 1;
+    audio::buildVagBlock(second, bytes.data() + 0x410);
+
+    CHECK(tvbSampleSlotCount(bytes) == 254);
+    const auto range = tvbSampleByteRange(bytes, 0);
+    CHECK(range);
+    if (range) CHECK(range->size() == 32);
+
+    std::vector<std::int16_t> pcm;
+    CHECK(tvbDecodeSample(bytes, 0, pcm));
+    CHECK(pcm.size() == 56);
+    CHECK(pcm[0] == 0);
+    CHECK(pcm[8] == -8);
+    CHECK(pcm[28] == 1);  // raw TVB blocks do not stop at VAG stream flag 7
+
+    std::vector<std::int16_t> directPcm;
+    CHECK(audio::decodeVagBlocks(bytes.data() + 0x400, 32, directPcm));
+    CHECK(directPcm == pcm);
+
+    put32(bytes, 3 * 4, 0x421);
+    CHECK(!tvbSampleByteRange(bytes, 0));
+    CHECK(!tvbDecodeSample(bytes, 0, pcm));
 }
 
 // Removing the pointer-table boundary check would accept an offset outside the
@@ -88,10 +134,38 @@ static void testRealDiscWhenPresent() {
         std::puts("music sequence: disc not present; integration check skipped");
         return;
     }
-    const auto tvb = parseTvb(readFile(sound / "BGM.TVB"));
+    const std::vector<std::uint8_t> tvbBytes = readFile(sound / "BGM.TVB");
+    const auto tvb = parseTvb(tvbBytes);
     CHECK(tvb);
     if (tvb) std::printf("BGM.TVB: programs=%zu pool=[0x%x,0x%x)\n",
                          tvb->programs.size(), tvb->samplePoolOffset, tvb->samplePoolEnd);
+
+    // BGM.TVB has 30 populated sample slots (0..29); later table slots repeat
+    // the terminal boundary.  Decode a broad low-range selection plus the
+    // last populated slot, and also prove the high empty slots stay empty.
+    const std::size_t decodedSlots[] = {0, 1, 2, 3, 4, 5, 6, 7, 29};
+    for (const std::size_t slot : decodedSlots) {
+        const auto range = tvbSampleByteRange(tvbBytes, slot);
+        CHECK(range);
+        if (!range) continue;
+        std::vector<std::int16_t> pcm;
+        CHECK(tvbDecodeSample(tvbBytes, slot, pcm));
+        CHECK(pcm.size() == range->size() / audio::kVagBlockBytes * audio::kVagBlockSamples);
+        int peak = 0;
+        for (const std::int16_t sample : pcm)
+            peak = std::max(peak, std::abs(static_cast<int>(sample)));
+        CHECK(!pcm.empty());
+        CHECK(peak > 0);
+        CHECK(peak <= 32768);
+        std::printf("BGM.TVB slot %zu: bytes=%zu samples=%zu peak=%d\n",
+                    slot, range->size(), pcm.size(), peak);
+    }
+    const auto emptyRange = tvbSampleByteRange(tvbBytes, 250);
+    CHECK(emptyRange);
+    if (emptyRange) CHECK(emptyRange->empty());
+    std::vector<std::int16_t> emptyPcm;
+    CHECK(tvbDecodeSample(tvbBytes, 250, emptyPcm));
+    CHECK(emptyPcm.empty());
 
     for (const auto& entry : std::filesystem::directory_iterator(sound)) {
         if (entry.path().extension() != ".TSQ") continue;
@@ -117,6 +191,7 @@ static void testRealDiscWhenPresent() {
 
 int main() {
     testParsesTvbSampleOffsets();
+    testDecodesHeaderlessTvbSampleBlocks();
     testParsesTsqTrackSpans();
     testRealDiscWhenPresent();
     if (g_fail) { std::fprintf(stderr, "%d failure(s)\n", g_fail); return 1; }

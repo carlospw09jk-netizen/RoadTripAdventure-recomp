@@ -44,6 +44,22 @@ struct TvbVoiceBank {
 // pool's terminal boundary (it is repeated by empty trailing program slots).
 expected<TvbVoiceBank, MusicSeqError> parseTvb(std::span<const std::uint8_t> data);
 
+// Number of logical sample slots after TVB's two leading non-sample entries.
+// Returns zero when the offset table is invalid or truncated.
+std::size_t tvbSampleSlotCount(std::span<const std::uint8_t> data);
+
+// Return the block-aligned headerless ADPCM byte range for one logical TVB
+// sample slot.  Empty trailing slots are valid and produce an empty span.
+expected<std::span<const std::uint8_t>, MusicSeqError>
+tvbSampleByteRange(std::span<const std::uint8_t> data, std::size_t slot);
+
+// Decode one TVB sample's headerless PS ADPCM blocks into PCM.  Every complete
+// block in its byte range produces 28 samples, including blocks whose flags
+// byte would terminate a standalone VAG stream.  Returns false on an invalid
+// TVB table, slot, or block range; pcmOut is cleared in either case.
+bool tvbDecodeSample(std::span<const std::uint8_t> data, std::size_t slot,
+                     std::vector<std::int16_t>& pcmOut);
+
 struct TsqHeader {
     // TSQ's pointer table has no explicit count.  Its byte extent is inferred
     // from the lowest valid target; each entry is {segment, fileOffset}.

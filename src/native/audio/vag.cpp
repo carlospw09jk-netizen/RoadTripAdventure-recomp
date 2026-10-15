@@ -41,39 +41,59 @@ inline std::int32_t saturate16(std::int32_t s) {
 
 }  // namespace
 
-std::size_t decodeVagBlock(const std::uint8_t* block,
-                           std::int16_t* outSamples,
-                           std::int32_t& s1, std::int32_t& s2) {
+namespace {
+
+std::size_t decodeVagBlockImpl(const std::uint8_t* block,
+                               std::int16_t* outSamples,
+                               std::int32_t& s1, std::int32_t& s2,
+                               bool stopAtEndFlag) {
     // byte 0 = shift (low nibble), filter index (high nibble capped at 4)
     const std::uint32_t shift = block[0] & 0x0F;
     const std::uint32_t filter = std::min<std::uint32_t>(block[0] >> 4, 4);
     const std::uint8_t flags = block[1];
 
-    // End-of-stream block: pad bytes with the magic flag value 7. We
-    // consume no samples and leave the predictor untouched so a caller
-    // that loops back would carry the same state into the next block.
-    if (flags == kVagEndOfStream) {
-        return 0;
-    }
+    if (stopAtEndFlag && flags == kVagEndOfStream) return 0;
 
     const int f0 = kF0[filter];
     const int f1 = kF1[filter];
-
     for (std::size_t i = 0; i < kVagBlockSamples; ++i) {
         const std::uint32_t byte = block[2 + (i / 2)];
         const std::uint32_t nibble = (byte >> ((i & 1) * 4)) & 0x0F;
-        // ADPCM prediction step: 4-bit signed delta * 2^(-shift), plus the
-        // two-tap AR filter state.
         std::int32_t s = signedNibbleAsShifted(nibble, shift);
         s += (s1 * f0 + s2 * f1 + 32) >> 6;
         s = saturate16(s);
-        // Predictor state carries two recent samples; classic IIR order is
-        // "newest into s1, oldest falls back into s2".
         s2 = s1;
         s1 = s;
         outSamples[i] = static_cast<std::int16_t>(s);
     }
     return kVagBlockSamples;
+}
+
+}  // namespace
+
+std::size_t decodeVagBlock(const std::uint8_t* block,
+                            std::int16_t* outSamples,
+                            std::int32_t& s1, std::int32_t& s2) {
+    // End-of-stream block: pad bytes with the magic flag value 7. We
+    // consume no samples and leave the predictor untouched so a caller
+    // that loops back would carry the same state into the next block.
+    return decodeVagBlockImpl(block, outSamples, s1, s2, true);
+}
+
+bool decodeVagBlocks(const std::uint8_t* data, std::size_t size,
+                     std::vector<std::int16_t>& outSamples) {
+    outSamples.clear();
+    if (size == 0) return true;
+    if (data == nullptr || size % kVagBlockBytes != 0) return false;
+    outSamples.reserve((size / kVagBlockBytes) * kVagBlockSamples);
+
+    std::int32_t s1 = 0, s2 = 0;
+    std::int16_t blockOut[kVagBlockSamples];
+    for (std::size_t off = 0; off < size; off += kVagBlockBytes) {
+        const std::size_t got = decodeVagBlockImpl(data + off, blockOut, s1, s2, false);
+        outSamples.insert(outSamples.end(), blockOut, blockOut + got);
+    }
+    return true;
 }
 
 std::vector<std::int16_t> decodeVagStream(const std::uint8_t* data,

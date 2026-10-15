@@ -14,8 +14,10 @@ Source: byte analysis of `SOUND/` from a user-extracted disc. Parsers live in
   TVB itself** — the bank is self-contained (it does NOT index the big
   `1CH/2CH/3CH*.VAG` pool files).
 - Pool entries have **no `VAGp` magic**: the samples are headerless PS1-style
-  4-bit ADPCM blocks (16-byte frames: u16 shift/filter, 28-byte nibble
-  stream). Decodeable with our VAG block decoder minus the 16-byte VAG header.
+  4-bit ADPCM blocks (16-byte frames: one shift/filter byte, one flags byte,
+  then 14 packed-nibble bytes = 28 PCM samples). Decodeable with the raw-block
+  helper in `audio/vag.h`; the TVB range determines the end, not a VAG stream
+  end flag.
 
 ## TSQ — sequence files (BGM_01..09, ACTION, CQ_MAIN, SELECT, …)
 

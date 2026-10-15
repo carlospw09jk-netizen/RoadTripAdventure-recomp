@@ -22,8 +22,8 @@
 // The stream decoder models the documented IOP SNDMOD semantics for sample
 // playback (see docs/game-mechanics/sound-and-daynight.md §1): looping is
 // handled by the stream, not the block. Channels, pan and volume live in the
-// mixer (mixer.h). We do NOT decode the game's sequenced TSQ/TVB formats —
-// they aren't in scope here.
+// mixer (mixer.h). TSQ sequence playback is outside this decoder; the TVB
+// container parser feeds its headerless blocks through decodeVagBlocks().
 #pragma once
 
 #include <cstddef>
@@ -66,6 +66,15 @@ std::size_t decodeVagBlock(const std::uint8_t* block,
 // dropped. All output samples are clamped to int16 range.
 std::vector<std::int16_t> decodeVagStream(const std::uint8_t* data,
                                            std::size_t size);
+
+// Decode a headerless, block-aligned PS ADPCM buffer.  Unlike
+// decodeVagStream(), this treats every block as sample data and does not give
+// the VAG stream end flag special meaning; container formats such as TVB use
+// that byte as in-band metadata.  Returns false when data is null for a
+// non-empty input or when size is not a whole number of blocks.  `outSamples`
+// is cleared before decoding.
+bool decodeVagBlocks(const std::uint8_t* data, std::size_t size,
+                     std::vector<std::int16_t>& outSamples);
 
 // Parse a VAG ("VAGp") container header. Returns true on a 48-byte file that
 // starts with "VAGp"; on false, the out parameter is left zeroed. Used by the

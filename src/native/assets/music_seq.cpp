@@ -1,5 +1,7 @@
 #include "music_seq.h"
 
+#include "audio/vag.h"
+
 #include <algorithm>
 #include <limits>
 
@@ -40,6 +42,36 @@ expected<TvbVoiceBank, MusicSeqError> parseTvb(std::span<const std::uint8_t> dat
     bank.samplePoolOffset = firstSample;
     bank.samplePoolEnd = previous;
     return bank;
+}
+
+std::size_t tvbSampleSlotCount(std::span<const std::uint8_t> data) {
+    return parseTvb(data) ? kTvbProgramCount - 2 : 0;
+}
+
+expected<std::span<const std::uint8_t>, MusicSeqError>
+tvbSampleByteRange(std::span<const std::uint8_t> data, std::size_t slot) {
+    const auto bank = parseTvb(data);
+    if (!bank) return bank.error();
+    const std::size_t slotCount = kTvbProgramCount - 2;
+    if (slot >= slotCount) return MusicSeqError::BadTvbOffset;
+
+    const std::size_t tableIndex = slot + 2;
+    const std::size_t begin = bank->programs[tableIndex].sampleOffset;
+    const std::size_t end = tableIndex + 1 < kTvbProgramCount
+                                ? bank->programs[tableIndex + 1].sampleOffset
+                                : bank->samplePoolEnd;
+    if (begin < bank->samplePoolOffset || end < begin || end > data.size() ||
+        (begin & 0xfu) != 0 || (end & 0xfu) != 0)
+        return MusicSeqError::BadTvbOffset;
+    return data.subspan(begin, end - begin);
+}
+
+bool tvbDecodeSample(std::span<const std::uint8_t> data, std::size_t slot,
+                     std::vector<std::int16_t>& pcmOut) {
+    pcmOut.clear();
+    const auto range = tvbSampleByteRange(data, slot);
+    if (!range || range->size() % audio::kVagBlockBytes != 0) return false;
+    return audio::decodeVagBlocks(range->data(), range->size(), pcmOut);
 }
 
 expected<TsqSequence, MusicSeqError> parseTsq(std::span<const std::uint8_t> data) {

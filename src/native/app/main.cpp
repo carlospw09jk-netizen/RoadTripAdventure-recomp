@@ -4,9 +4,12 @@
 #include "assets/native_model.h"
 #include "audio/engine.h"
 #include "audio/vag_loader.h"
+#include "gameplay/collectibles.h"
+#include "gameplay/dialogue.h"
 #include "gameplay/input.h"
 #include "gameplay/menu.h"
 #include "gameplay/session.h"
+#include "gameplay/shop.h"
 #include "preview/preview.h"
 #include "preview/race_hud.h"
 
@@ -408,21 +411,45 @@ int main() {
     // One lap lets the headless host exercise the complete authored session
     // loop promptly; GameSession enables race mode for its owned GameLoop.
     rt::native::gameplay::GameSession session(1);
+    // These host-owned examples deliberately use synthetic names, IDs, and
+    // positions; they do not load any guest game data.
+    std::vector<rt::native::gameplay::Collectible> collectibles{
+        {rt::native::gameplay::CollectibleKind::STAMP, {400.f, 400.f}, 30.f, 0},
+        {rt::native::gameplay::CollectibleKind::COIN, {1200.f, 400.f}, 30.f, 0},
+        {rt::native::gameplay::CollectibleKind::STAMP, {1200.f, 1200.f}, 30.f, 1},
+    };
+    rt::native::gameplay::Shop shop{{
+        {1, "road map", 100, 1},
+        {2, "fuel can", 250, 1},
+        {3, "lucky charm", 500, 1},
+    }};
+    rt::native::gameplay::Dialogue dialogue;
+    const std::vector<rt::native::gameplay::DialogueLine> dialogueLines{
+        {"Guide", "Welcome to the scenic route."},
+        {"Guide", "Collect stamps and coins as you drive."},
+        {"Guide", "The shop has supplies when you need them."},
+    };
+    bool shopOpen = false;
     rt::native::gameplay::ControllerConfig controllerConfig;
     bool playerDriven = false, running = true; int frames = 0;
     std::uint64_t simulationFrame = 0;
     AppState state = initialAppState();
-    // RT_APP_STATE=PLAYING is the host's direct-launch shortcut.  Start its
-    // first race explicitly; ordinary session flow returns to EXPLORE after
-    // results and waits there for Enter/R.
-    if (state == AppState::PLAYING) session.startRace();
+    // RT_APP_STATE=PLAYING is the host's direct-launch shortcut.  Log and
+    // expose its initial EXPLORE state for one frame, then start the same
+    // first AI race that older direct launches used.
+    bool directStartRace = state == AppState::PLAYING;
     rt::native::gameplay::MenuFlow menuFlow;
     if (state == AppState::MENU) menuFlow.screen = rt::native::gameplay::MenuScreen::MODE_SELECT;
+    bool loggedAppState = false, loggedSessionState = false;
+    AppState lastLoggedAppState = state;
+    rt::native::gameplay::SessionState lastLoggedSessionState = session.state();
     auto previous = std::chrono::steady_clock::now();
     while (running && (!maxFrames || frames < maxFrames)) {
         SDL_Event event; bool resize = false;
         rt::native::gameplay::MenuInput menuInput;
         bool titleAdvance = false, returnToMenu = false;
+        bool startRace = false, openShop = false, openDialogue = false, advanceDialogue = false;
+        int shopSelection = -1;
         while (SDL_PollEvent(&event)) { if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
             if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
                 if (state == AppState::TITLE) titleAdvance = true;
@@ -437,9 +464,17 @@ int main() {
                     if (event.key.scancode == SDL_SCANCODE_TAB &&
                         session.state() == rt::native::gameplay::SessionState::RACE)
                         playerDriven = !playerDriven;
-                    if (session.state() == rt::native::gameplay::SessionState::EXPLORE &&
-                        (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_R))
-                        session.startRace();
+                    if (session.state() == rt::native::gameplay::SessionState::EXPLORE) {
+                        openShop = openShop || event.key.scancode == SDL_SCANCODE_S;
+                        openDialogue = openDialogue || event.key.scancode == SDL_SCANCODE_D;
+                        if (shopOpen && event.key.scancode >= SDL_SCANCODE_1 && event.key.scancode <= SDL_SCANCODE_3)
+                            shopSelection = static_cast<int>(event.key.scancode - SDL_SCANCODE_1);
+                        if (dialogue.isActive() && event.key.scancode == SDL_SCANCODE_RETURN)
+                            advanceDialogue = true;
+                        else if (!dialogue.isActive() &&
+                                 (event.key.scancode == SDL_SCANCODE_RETURN || event.key.scancode == SDL_SCANCODE_R))
+                            startRace = true;
+                    }
                     if (session.state() == rt::native::gameplay::SessionState::RESULTS &&
                         event.key.scancode == SDL_SCANCODE_RETURN)
                         session.continueFromResults();
@@ -480,6 +515,7 @@ int main() {
         if (held(SDL_SCANCODE_SPACE))
             rt::native::gameplay::setPressed(pad, controllerConfig.getButtonConfig(rt::native::gameplay::ControllerAction::REVERSE));
         const auto input = rt::native::gameplay::playerCarInput(pad, axes, controllerConfig);
+        (void)input;
         rt::native::gameplay::FrameSnapshot snapshot;
         if (state == AppState::PLAYING) {
             // GameSession owns the race loop.  Its current public update path
@@ -488,13 +524,71 @@ int main() {
             session.update(menuInput);
             snapshot = session.lastSnapshot();
             simulationFrame = snapshot.frame;
-            std::cout << "rt-app input mode=" << (playerDriven ? "player" : "ai") << " steer=" << input.steer
-                      << " gas=" << input.gas << " brake=" << input.brake << " reverse=" << input.reverse << "\n";
+
+            if (session.state() == rt::native::gameplay::SessionState::EXPLORE) {
+                if (openShop && !shopOpen) {
+                    shopOpen = true;
+                    std::cout << "rt-app shop opened: 1=road map, 2=fuel can, 3=lucky charm\n";
+                }
+                if (openDialogue && !dialogue.isActive()) {
+                    dialogue.open(dialogueLines);
+                    const auto* line = dialogue.currentLine();
+                    std::cout << "rt-app dialogue " << line->speaker << ": " << line->text << "\n";
+                }
+                if (shopOpen && shopSelection >= 0) {
+                    // GameSession owns a mutable SaveData; its public accessor is
+                    // read-only for callers that only display progress.
+                    auto& progress = const_cast<rt::native::gameplay::SaveData&>(session.progress());
+                    const std::uint32_t moneyBefore = progress.money;
+                    const bool bought = shop.buy(progress, static_cast<std::size_t>(shopSelection));
+                    const char* itemName = shopSelection < static_cast<int>(shop.items.size())
+                        ? shop.items[static_cast<std::size_t>(shopSelection)].name.c_str() : "invalid item";
+                    std::cout << "rt-app shop buy " << itemName << " result=" << (bought ? "ok" : "failed")
+                              << " money=" << moneyBefore << "->" << progress.money << "\n";
+                }
+                if (advanceDialogue && dialogue.isActive()) {
+                    const bool finished = dialogue.advance({.confirm = true});
+                    if (finished)
+                        std::cout << "rt-app dialogue closed\n";
+                    else {
+                        const auto* line = dialogue.currentLine();
+                        std::cout << "rt-app dialogue " << line->speaker << ": " << line->text << "\n";
+                    }
+                }
+                if (startRace) session.startRace();
+            }
+
+            // In EXPLORE, this uses the retained session snapshot.  The AI
+            // drives during RACE, too, so checking that snapshot there makes
+            // the synthetic pickup path observable in a headless launch.
+            if (session.state() == rt::native::gameplay::SessionState::EXPLORE ||
+                (session.state() == rt::native::gameplay::SessionState::RACE && !playerDriven)) {
+                auto& progress = const_cast<rt::native::gameplay::SaveData&>(session.progress());
+                for (auto& collectible : collectibles) {
+                    if (!rt::native::gameplay::tryCollect(collectible, snapshot.carPosition, progress)) continue;
+                    std::cout << "rt-app collected "
+                              << (collectible.kind == rt::native::gameplay::CollectibleKind::STAMP ? "stamp " : "coin ")
+                              << collectible.index << " total="
+                              << rt::native::gameplay::collectedCount(collectibles) << "\n";
+                }
+            }
+        }
+        if (!loggedAppState || state != lastLoggedAppState) {
+            std::cout << "rt-app state=" << appStateName(state) << "\n";
+            lastLoggedAppState = state;
+            loggedAppState = true;
+        }
+        if (state == AppState::PLAYING && (!loggedSessionState || session.state() != lastLoggedSessionState)) {
             std::cout << "rt-app session state=" << sessionStateName(session.state())
                       << " lap=" << snapshot.lap << " finished=" << snapshot.finished
                       << " money=" << session.progress().money << "\n";
+            lastLoggedSessionState = session.state();
+            loggedSessionState = true;
         }
-        std::cout << "rt-app state=" << appStateName(state) << " menu_cursor_row=" << menuFlow.topLevelCursor << "\n";
+        if (state == AppState::PLAYING && directStartRace) {
+            session.startRace();
+            directStartRace = false;
+        }
         if (!noRender && presenter.extent.width && presenter.extent.height) {
             bool retry = false;
             do {

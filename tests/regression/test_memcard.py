@@ -70,4 +70,10 @@ def test_damaged_save_loads(game_factory, golden, test_data):
     game = game_factory(checkpoint=str(damaged))
     continue_to_factory(game)
     golden("memcard_damaged_factory", game.frame())
+    # The game keeps no checksum: it loads the damaged bytes as they lie (name, currency and
+    # money all XORed 0x5A by this test), so the live progress is the card's garbage, not the
+    # values the intact save had.
+    progress = game.progress()
+    assert progress["player_name"] != "AAAAAAAAA", f"the damaged name should load as it lies: {progress['player_name']!r}"
+    assert progress["money"] != 1000, f"the damaged money should load as it lies: {progress['money']}"
     assert game.stats()["flips"] > 0

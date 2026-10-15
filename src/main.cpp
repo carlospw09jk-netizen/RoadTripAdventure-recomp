@@ -68,6 +68,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
@@ -654,6 +655,19 @@ namespace
                                        // pressed), so released is the minimum.
                                        static_cast<Sint16>(SDL_JOYSTICK_AXIS_MIN + v * (SDL_JOYSTICK_AXIS_MAX - SDL_JOYSTICK_AXIS_MIN)));
         }
+        static const std::pair<const char *, SDL_GamepadAxis> stickAxes[] = {
+            {"lx", SDL_GAMEPAD_AXIS_LEFTX},
+            {"ly", SDL_GAMEPAD_AXIS_LEFTY},
+            {"rx", SDL_GAMEPAD_AXIS_RIGHTX},
+            {"ry", SDL_GAMEPAD_AXIS_RIGHTY},
+        };
+        for (const auto &[name, axis] : stickAxes)
+        {
+            // "lx"/"ly"/"rx"/"ry": -1.0 .. 1.0, mapped to -32767 .. 32767 (0 centered).
+            const std::string amount = ps2_test::jsonField(line, name);
+            const float v = !amount.empty() ? std::clamp(std::strtof(amount.c_str(), nullptr), -1.0f, 1.0f) : 0.0f;
+            SDL_SetJoystickVirtualAxis(joy, axis, static_cast<Sint16>(std::clamp(std::round(v * 32767.0f), -32767.0f, 32767.0f)));
+        }
         // What the app last asked this pad's motors for (0..65535: low, high, left and right trigger).
         return "{\"ok\":true,\"rumble\":[" + std::to_string(g_virtualRumble[0].load()) + "," +
                std::to_string(g_virtualRumble[1].load()) + "," + std::to_string(g_virtualRumble[2].load()) + "," +
@@ -1056,7 +1070,21 @@ int main(int argc, char *argv[])
             },
             &hooks);
         rt::settings::exportGsEnvironment(); // before the GS starts
-        if (const char *h = std::getenv("RT_HEADLESS"); !(h && *h == '1'))
+        const char *menuShot = std::getenv("RT_MENU_SHOT");
+        const char *headlessEnv = std::getenv("RT_HEADLESS");
+        const bool headless = headlessEnv && *headlessEnv == '1';
+        const bool menuShotHeadless = menuShot && *menuShot && headless;
+        if (menuShotHeadless)
+        {
+            // Headless menu shot: the presenter runs with a hidden window to render ImGui over the game.
+#if defined(_WIN32)
+            _putenv("RT_MENU_SHOT_HEADLESS=1");
+#else
+            setenv("RT_MENU_SHOT_HEADLESS", "1", 1);
+#endif
+        }
+        const bool wantPresenter = !headless || menuShotHeadless;
+        if (wantPresenter)
             selectPresenter(runtime);
         if (!runtime.initialize("Road Trip Adventure"))
         {

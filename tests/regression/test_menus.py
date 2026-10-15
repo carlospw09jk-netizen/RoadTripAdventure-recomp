@@ -65,12 +65,15 @@ def test_options_screens(game_factory, golden):
 
 
 def test_vibration_test_button(game_factory):
-    """Vibration -> TEST drives the pad motors (no crash, the menu stays responsive)."""
+    """Vibration -> TEST drives the pad motors through the game's actuator table (the motors
+    fire, and the menu keeps presenting)."""
     game = game_factory()
     boot_to_main_menu(game)
     open_main_item(game, OPTIONS)
     set_option(game, 0, 3)
     game.run(seconds(3))
+    motors = game.actuators()[0]
+    assert motors["changes"] > 0, f"TEST should drive the pad motors: {motors}"
     assert game.stats()["flips"] > 0
 
 

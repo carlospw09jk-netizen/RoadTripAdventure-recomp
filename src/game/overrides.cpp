@@ -5,6 +5,7 @@
 #include "game/Driving.h"
 #include "game/GameOptions.h"
 #include "game/GameStats.h"
+#include "settings/Settings.h"
 #include "states/StateSlots.h"
 #include "game_overrides.h"
 #include "ps2_runtime.h"
@@ -14,6 +15,7 @@
 #include "runtime/ps2_save_state.h"
 
 #include "runtime/gs/gs_native_draw.h"
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <cstring>
@@ -383,6 +385,132 @@ namespace
         return n;
     }
 
+
+    // ---------------------------------------------------------------- game enhancements (Options)
+
+    constexpr uint32_t kSteeringRamp = 0x0021A088u, kDrawCar = 0x00221788u, kUpdateTimeOfDay = 0x00225988u;
+    constexpr uint32_t kVifDirect = 0x00226F70u, kDrawSceneRace = 0x00220D40u, kDrawSceneAction = 0x00220FE8u;
+    constexpr uint32_t kCarShadowSetup = 0x002212C8u, kCarouselScene = 0x002455C0u;
+    constexpr uint32_t kFarDepth[4] = {0x29CF68u, 0x29CF78u, 0x29CF98u, 0x29CFA8u};
+    constexpr uint32_t kFogFar = 0x177F73Cu;
+    PS2Runtime::RecompiledFunction g_drawCar = nullptr, g_updateTimeOfDay = nullptr, g_vifDirect = nullptr;
+    PS2Runtime::RecompiledFunction g_drawSceneRace = nullptr, g_drawSceneAction = nullptr, g_carShadowSetup = nullptr;
+    PS2Runtime::RecompiledFunction g_carouselScene = nullptr;
+    bool g_drawDistanceApplied = false;
+    int g_inRaceScene = 0;
+
+    PS2Runtime::RecompiledFunction g_steeringRamp = nullptr;
+
+    // FUN_0021A088 ramps the wheel (+0x1D2) toward a target. Its left-turn branch tests
+    // (target - current) < 9, true almost always, so it snaps where the right branch ramps. Only
+    // a2/t0 (the stick values) and +0x1D2 are read by its first block, so the wanted result is put
+    // in +0x1D2 and the stick values are replaced by ones that make the block store it again:
+    // 3 * wanted as t0 (target == wanted, so target - current == 0 < 9), or 0/0 for a wanted 0.
+    void steeringRampHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t car = GPR_U32(ctx, 4);
+        const int32_t p3 = GPR_S32(ctx, 6), p5 = GPR_S32(ctx, 8);
+        const int16_t gear = static_cast<int16_t>(READ16(car + 0x1D6u));
+        if (rt::settings::current().fixSteeringBias && static_cast<uint16_t>(gear + 0xFFF) < 0x1FFFu && p3 >= 0 &&
+            (p5 < -p3 || p3 < p5) && p5 < 0)
+        {
+            const int32_t cur = static_cast<int16_t>(READ16(car + 0x1D2u));
+            const int32_t target = std::max((p5 - p3) / 3, -0x200);
+            const int32_t wanted = cur - target < 9 ? target : cur - 8;
+            if (wanted >= -0x200 && wanted <= 0x200)
+            {
+                WRITE16(car + 0x1D2u, static_cast<uint16_t>(static_cast<int16_t>(wanted)));
+                SET_GPR_S32(ctx, 6, 0);
+                SET_GPR_S32(ctx, 8, wanted * 3);
+            }
+        }
+        g_steeringRamp(rdram, ctx, runtime);
+    }
+
+    void drawCarHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (rt::settings::current().highLodCars)
+        {
+            ctx->f[12] = 0.0f; // distance 0: the nearest level of detail
+            WRITE32(0x3356E8u, 0u);
+        }
+        g_drawCar(rdram, ctx, runtime);
+    }
+
+    // The far-depth table (700.0 in the game) and the fog far the time-of-day light sets.
+    void updateTimeOfDayHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const bool far = rt::settings::current().increasedDrawDistance;
+        if (far != g_drawDistanceApplied)
+        {
+            g_drawDistanceApplied = far;
+            const float value = far ? 1600.0f : 700.0f;
+            uint32_t bits;
+            std::memcpy(&bits, &value, 4);
+            for (uint32_t a : kFarDepth)
+                WRITE32(a, bits);
+        }
+        g_updateTimeOfDay(rdram, ctx, runtime);
+        if (far)
+        {
+            float fog;
+            uint32_t bits = READ32(kFogFar);
+            std::memcpy(&fog, &bits, 4);
+            fog *= 2.0f;
+            std::memcpy(&bits, &fog, 4);
+            WRITE32(kFogFar, bits);
+        }
+    }
+
+    template <int Which>
+    void raceSceneHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        ++g_inRaceScene;
+        (Which == 0 ? g_drawSceneRace : g_drawSceneAction)(rdram, ctx, runtime);
+        --g_inRaceScene;
+    }
+
+    // vifDirect(0x29CFF0, 3) inside a race scene: the car shadows' set-up (0x2212C8 with 0x20 sets
+    // the shadow colour and sends the 0x29D0F0 packet) comes first, as the town draws them.
+    void vifDirectHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        if (g_inRaceScene > 0 && GPR_U32(ctx, 4) == 0x29CFF0u && GPR_U32(ctx, 5) == 3u && g_carShadowSetup &&
+            rt::settings::current().raceCarShadows)
+        {
+            const R5900Context saved = *ctx;
+            SET_GPR_U32(ctx, 4, 0x20u);
+            g_carShadowSetup(rdram, ctx, runtime);
+            *ctx = saved;
+        }
+        g_vifDirect(rdram, ctx, runtime);
+    }
+
+    // The course carousel's panels are 2D pictures drawn through PATH1: the frame is a 2D screen.
+    void carouselSceneHook(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        runtime->gsUnsynced().forceWideScreen2D();
+        g_carouselScene(rdram, ctx, runtime);
+    }
+
+    void installEnhancementHooks(PS2Runtime &runtime)
+    {
+        auto hook = [&](uint32_t addr, PS2Runtime::RecompiledFunction &orig, PS2Runtime::RecompiledFunction fn, const char *what) {
+            orig = runtime.lookupFunction(addr);
+            if (orig)
+                runtime.replaceFunction(addr, fn);
+            else
+                std::cerr << "[roadtrip] " << what << " not found: hook skipped\n";
+        };
+        hook(kSteeringRamp, g_steeringRamp, steeringRampHook, "steering ramp");
+        hook(kDrawCar, g_drawCar, drawCarHook, "drawCar");
+        hook(kUpdateTimeOfDay, g_updateTimeOfDay, updateTimeOfDayHook, "updateTimeOfDayLight");
+        g_carShadowSetup = runtime.lookupFunction(kCarShadowSetup);
+        hook(kDrawSceneRace, g_drawSceneRace, raceSceneHook<0>, "drawSceneRace");
+        hook(kDrawSceneAction, g_drawSceneAction, raceSceneHook<1>, "drawSceneAction");
+        hook(kVifDirect, g_vifDirect, vifDirectHook, "vifDirect");
+        hook(kCarouselScene, g_carouselScene, carouselSceneHook, "drawCarouselScene");
+    }
+
     void applyRoadTrip(PS2Runtime &runtime)
     {
         static bool nativeIop = false;
@@ -399,6 +527,7 @@ namespace
             ps2x::iop::registerNativeFunction(std::move(f));
         }
         registerStateMetadata(runtime);
+        installEnhancementHooks(runtime);
         std::cout << "[roadtrip] applying SLUS-20398 overrides\n";
         g_setHalfOffset[0] = runtime.lookupFunction(kSetHalfOffset[0]);
         g_setHalfOffset[1] = runtime.lookupFunction(kSetHalfOffset[1]);

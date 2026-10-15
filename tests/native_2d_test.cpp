@@ -133,6 +133,28 @@ int main()
             CHECK(out.raws[0].size == 16 + 6 * 16); // the whole of it: PRIM, ALPHA_2, TEST_2, RGBAQ, XYZ2 x2
         // order: Clut, Draw, Raw, Draw
         CHECK(out.items.size() == 4 && out.items[2].kind == Native2DItem::Raw && out.items[3].kind == Native2DItem::Draw);
+        // Verify decoder recorded Context 2 state in ctx[1]:
+        CHECK(dec.context(1).alpha == 0x8000000052ull);
+        CHECK(dec.context(1).test == 0x7D80B);
+        CHECK((dec.context(1).valid & (Native2DDecoder::kAlpha | Native2DDecoder::kTest)) == (Native2DDecoder::kAlpha | Native2DDecoder::kTest));
+    }
+
+    // 2b. Registers not owned by 2D (e.g. unowned A+D) stay the frontend's: verbatim, as Raw items.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        header(p, kTex0);
+        sprites(p, {{10, 20}}, 16, 20);
+        p.tag(1, 0, 1, 0xE);
+        p.ad(0x50, 0x12345678ull); // An unowned register
+        sprites(p, {{50, 60}}, 16, 20);
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.draws.size() == 2);
+        CHECK(out.raws.size() == 1);
+        if (out.raws.size() == 1)
+            CHECK(out.raws[0].size == 16 + 1 * 16);
+        CHECK(out.items.size() == 4 && out.items[2].kind == Native2DItem::Raw && out.items[3].kind == Native2DItem::Draw);
     }
 
     // 3. A hidden sprite (XYZ3) is a draw that does not kick; a strip of four with STQ is one draw.
@@ -260,6 +282,195 @@ int main()
         const float x0 = (v[0].rawX - static_cast<float>(kOfx)) / 16.0f;
         CHECK(std::fabs(x0 - 10.0f * wide.horizontalScale()) < 0.2f); // anchored left: x * k
         CHECK(wide.vertexClasses().size() == 2 && wide.vertexClasses()[0] == WideLayout::VertexClass::Ui);
+    }
+
+    // 6. Context-2 state packets: TEST_2, ALPHA_2, TEX0_2, TEX1_2, CLAMP_2, SCISSOR_2, FRAME_2, ZBUF_2, XYOFFSET_2.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        p.tag(9, 0, 1, 0xE);
+        p.ad(0x48, 0x537FB);                     // TEST_2
+        p.ad(0x43, 0x44);                        // ALPHA_2
+        p.ad(0x07, kTex0);                       // TEX0_2
+        p.ad(0x15, 0x60);                        // TEX1_2
+        p.ad(0x09, 5);                           // CLAMP_2
+        p.ad(0x41, 0 | (639ull << 16) | (0ull << 32) | (223ull << 48)); // SCISSOR_2
+        p.ad(0x4D, 0x12345ull);                  // FRAME_2
+        p.ad(0x4F, 0x6789Aull);                  // ZBUF_2
+        p.ad(0x19, static_cast<uint64_t>(kOfx) | (static_cast<uint64_t>(kOfy) << 32)); // XYOFFSET_2
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        // State-only packet leaves draws empty so the runtime lets the frontend see it as well.
+        CHECK(out.draws.empty());
+        CHECK(dec.context(1).valid == Native2DDecoder::kAll);
+        CHECK(dec.context(1).test == 0x537FB);
+        CHECK(dec.context(1).alpha == 0x44);
+        CHECK(dec.context(1).tex0.tbp0 == 0x1A40);
+        CHECK(dec.context(1).tex1 == 0x60);
+        CHECK(dec.context(1).clamp == 5);
+        CHECK(dec.context(1).hasScissor);
+        CHECK(dec.context(1).scissor.x0 == 0 && dec.context(1).scissor.x1 == 639 &&
+              dec.context(1).scissor.y0 == 0 && dec.context(1).scissor.y1 == 223);
+        CHECK(dec.context(1).hasFrame && dec.context(1).frame == 0x12345ull);
+        CHECK(dec.context(1).hasZbuf && dec.context(1).zbuf == 0x6789Aull);
+        CHECK(dec.context(1).hasXyoffset &&
+              dec.context(1).xyoffset == (static_cast<uint64_t>(kOfx) | (static_cast<uint64_t>(kOfy) << 32)));
+
+        // Context 1 state remains unpolluted by Context 2 writes.
+        CHECK(!dec.context(0).hasScissor);
+        CHECK(!dec.context(0).hasFrame);
+        CHECK(!dec.context(0).hasZbuf);
+        CHECK(!dec.context(0).hasXyoffset);
+    }
+
+    // 7. Context-2 shadow-darken sprite (PRIM 0x246, 0x29D0F0).
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        p.tag(6, 0, 1, 0xE);
+        p.ad(0x00, 0x246);           // PRIM: sprite, ABE, context 2
+        p.ad(0x43, 0x8000000052ull); // ALPHA_2
+        p.ad(0x48, 0x7D80B);         // TEST_2
+        p.ad(0x01, 0x20);            // RGBAQ
+        p.ad(0x05, xyz(0, 0, 0));
+        p.ad(0x05, xyz(640, 224, 0));
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        // The shadow sprite is forwarded to the GS frontend via Raw item (so it executes on m_ctx[1]):
+        CHECK(out.draws.empty());
+        CHECK(out.raws.size() == 1);
+        if (out.raws.size() == 1)
+            CHECK(out.raws[0].size == 16 + 6 * 16);
+        // Decoder records Context-2 register state in ctx[1]:
+        CHECK(dec.context(1).alpha == 0x8000000052ull);
+        CHECK(dec.context(1).test == 0x7D80B);
+        CHECK((dec.context(1).valid & (Native2DDecoder::kAlpha | Native2DDecoder::kTest)) == (Native2DDecoder::kAlpha | Native2DDecoder::kTest));
+    }
+
+    // 8. TEXA updates (uiSetTexa and uiBatchFlush): decoded in Native2DState AND forwarded for frontend sync.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        header(p, kTex0);
+        // uiBatchFlush writes TEXA (0x3B) = 0x4000008080 (TA0=0x80, AEM=1, TA1=0x40).
+        p.tag(1, 0, 1, 0xE);
+        p.ad(0x3B, 0x4000008080ull);
+        sprites(p, {{10, 20}}, 16, 20);
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.raws.size() == 1); // forwarded TEXA write for GS frontend sync
+        CHECK(out.draws.size() == 1);
+        if (out.draws.size() == 1)
+        {
+            CHECK(out.draws[0].state.hasTexa);
+            CHECK(out.draws[0].state.texa == 0x4000008080ull);
+        }
+
+        // Subsequent packet with uiSetTexa(0x40): TA0=0x40, AEM=1, TA1=0x20.
+        Bytes p2;
+        const uint64_t fadeTexa = 0x40 | 0x8000 | (0x20ull << 32);
+        p2.tag(1, 0, 1, 0xE);
+        p2.ad(0x3B, fadeTexa);
+        sprites(p2, {{30, 40}}, 16, 20);
+
+        CHECK(dec.decode(p2.b.data(), static_cast<uint32_t>(p2.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.raws.size() == 1); // forwarded TEXA write for GS frontend sync
+        CHECK(out.draws.size() == 1);
+        if (out.draws.size() == 1)
+        {
+            CHECK(out.draws[0].state.hasTexa);
+            CHECK(out.draws[0].state.texa == fadeTexa);
+        }
+    }
+
+    // 9. SCISSOR updates: SCISSOR_1 in Native2DState and forwarded, SCISSOR_2 in Context 2 state and forwarded.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        // Packet 1: Minimap setup (TEST_2 0x3380B, ALPHA_2 0x44, SCISSOR_2 x 45..158 y 156..207).
+        p.tag(3, 0, 1, 0xE);
+        p.ad(0x48, 0x3380B);                                           // TEST_2
+        p.ad(0x43, 0x44);                                              // ALPHA_2
+        p.ad(0x41, 45 | (158ull << 16) | (156ull << 32) | (207ull << 48)); // SCISSOR_2
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.draws.empty());
+        CHECK(out.raws.size() == 1);
+        CHECK(dec.context(1).hasScissor);
+        CHECK(dec.context(1).scissor.x0 == 45);
+        CHECK(dec.context(1).scissor.x1 == 158);
+        CHECK(dec.context(1).scissor.y0 == 156);
+        CHECK(dec.context(1).scissor.y1 == 207);
+
+        // Packet 2: Context 1 draw with SCISSOR_1 (0x40): tags Native2DState AND forwards to frontend.
+        Bytes pContext1;
+        header(pContext1, kTex0);
+        pContext1.tag(1, 0, 1, 0xE);
+        pContext1.ad(0x40, 10 | (300ull << 16) | (20ull << 32) | (200ull << 48));
+        sprites(pContext1, {{10, 20}}, 16, 20);
+
+        CHECK(dec.decode(pContext1.b.data(), static_cast<uint32_t>(pContext1.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.raws.size() == 1); // forwarded SCISSOR_1 to keep GS frontend m_ctx[0].scissor in sync
+        CHECK(out.draws.size() == 1);
+        if (out.draws.size() == 1)
+        {
+            CHECK(out.draws[0].state.ctxt == 0);
+            CHECK(out.draws[0].state.hasScissor);
+            CHECK(out.draws[0].state.scissor.x0 == 10);
+            CHECK(out.draws[0].state.scissor.x1 == 300);
+            CHECK(out.draws[0].state.scissor.y0 == 20);
+            CHECK(out.draws[0].state.scissor.y1 == 200);
+        }
+    }
+
+    // 10. Context-2 state tracking: TEX0_2, CLAMP_2, and TEX2_2 palette switch.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        p.tag(5, 0, 1, 0xE);
+        p.ad(0x48, 0x5001B);   // TEST_2
+        p.ad(0x43, 0x44);      // ALPHA_2
+        p.ad(0x15, 0x60);      // TEX1_2
+        p.ad(0x07, kTex0);     // TEX0_2
+        p.ad(0x09, 5);         // CLAMP_2
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        CHECK(dec.context(1).valid == Native2DDecoder::kAll);
+        CHECK(dec.context(1).tex0.tbp0 == 0x1A40);
+        CHECK(dec.context(1).tex0.csa == 0);
+
+        // Palette switch via TEX2_2 (0x17)
+        Bytes p2;
+        p2.tag(1, 0, 1, 0xE);
+        const uint64_t tex2Val = (2ull << 56) | 0x13780001400000ull; // CSA = 2
+        p2.ad(0x17, tex2Val);
+
+        CHECK(dec.decode(p2.b.data(), static_cast<uint32_t>(p2.b.size()), out) == Native2DReason::Ok);
+        CHECK(dec.context(1).tex0.csa == 2);
+    }
+
+    // 11. Context-1 environment registers (FRAME_1, ZBUF_1, XYOFFSET_1): decoded and forwarded for frontend sync.
+    {
+        Native2DDecoder dec;
+        Native2DPacket out;
+        Bytes p;
+        p.tag(3, 0, 1, 0xE);
+        p.ad(0x4C, 0x1111ull); // FRAME_1
+        p.ad(0x4E, 0x2222ull); // ZBUF_1
+        p.ad(0x18, static_cast<uint64_t>(kOfx) | (static_cast<uint64_t>(kOfy) << 32)); // XYOFFSET_1
+
+        CHECK(dec.decode(p.b.data(), static_cast<uint32_t>(p.b.size()), out) == Native2DReason::Ok);
+        CHECK(out.draws.empty());
+        CHECK(out.raws.size() == 1);
+        CHECK(dec.context(0).hasFrame && dec.context(0).frame == 0x1111ull);
+        CHECK(dec.context(0).hasZbuf && dec.context(0).zbuf == 0x2222ull);
+        CHECK(dec.context(0).hasXyoffset &&
+              dec.context(0).xyoffset == (static_cast<uint64_t>(kOfx) | (static_cast<uint64_t>(kOfy) << 32)));
     }
 
     if (g_failures)

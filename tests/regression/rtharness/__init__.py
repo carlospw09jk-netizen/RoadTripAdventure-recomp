@@ -308,11 +308,17 @@ class Game:
         return self.run(seconds(s))
 
     def step(self, vblanks: int, buttons: list[str] | None = None, lx: int = 128,
-             reads: list[tuple[int, int]] | None = None, port: int | None = None) -> list[bytes]:
+             reads: list[tuple[int, int]] | None = None, port: int | None = None,
+             release_to_sdl: bool = False) -> list[bytes]:
         """Sets the pad (if `buttons` is given; both pads, or only `port`), runs `vblanks` and
-        reads EE memory ranges (addr, len), in one round trip."""
-        args = {"vblanks": int(vblanks), "reads": ",".join(f"ee:{a}:{n}" for a, n in (reads or []))}
-        if buttons is not None:
+        reads EE memory ranges (addr, len), in one round trip.
+        `release_to_sdl=True` clears the test-pad override so SDL controller input takes over."""
+        args: dict = {"vblanks": int(vblanks), "reads": ",".join(f"ee:{a}:{n}" for a, n in (reads or []))}
+        if release_to_sdl:
+            args.update(release=True, release_to_sdl=True)
+            if port is not None:
+                args["port"] = int(port)
+        elif buttons is not None:
             mask = 0xFFFF
             for b in buttons:
                 mask &= ~BUTTONS[b]
@@ -324,9 +330,17 @@ class Game:
         return [bytes.fromhex(h) for h in reply["data"]]
 
     def pad(self, *buttons: str, lx: int = 128, ly: int = 128, rx: int = 128, ry: int = 128,
-            port: int | None = None, connected: bool | None = None):
+            port: int | None = None, connected: bool | None = None, release_to_sdl: bool = False,
+            release: bool = False):
         """Holds `buttons` (and stick positions) from the next vblank on: on both pads, or only
-        on `port` (0 or 1). `connected=False` unplugs that pad (True plugs it back in)."""
+        on `port` (0 or 1). `connected=False` unplugs that pad (True plugs it back in).
+        `release_to_sdl=True` (or `release=True`) clears the test-pad override so SDL controller input takes over."""
+        if release_to_sdl or release:
+            args: dict = {"release": True, "release_to_sdl": True}
+            if port is not None:
+                args["port"] = int(port)
+            self._call("pad", **args)
+            return
         mask = 0xFFFF
         for b in buttons:
             mask &= ~BUTTONS[b]
@@ -337,8 +351,52 @@ class Game:
             args["connected"] = 1 if connected else 0
         self._call("pad", **args)
 
-    def release(self, port: int | None = None):
-        self.pad(port=port)
+    def release_pad(self, port: int | None = None):
+        """Releases the test-pad override on `port` (or both pads if None) back to SDL / live input."""
+        args: dict = {}
+        if port is not None:
+            args["port"] = int(port)
+        self._call("release_pad", **args)
+
+    def release(self, port: int | None = None, to_sdl: bool = False):
+        if to_sdl:
+            self.release_pad(port=port)
+        else:
+            self.pad(port=port)
+
+    def sdl(self, *buttons: str, type: str | None = None,
+            lx: float = 0.0, ly: float = 0.0, rx: float = 0.0, ry: float = 0.0,
+            lt: float | None = None, rt: float | None = None, hold: float = 0.15) -> dict:
+        """Holds buttons and stick axes on a virtual SDL gamepad (type xbox, ps or switch) for `hold` seconds,
+        then releases them (unless hold <= 0): input through SDL, as from a real controller (the app's menus,
+        rebinding, button icons). Names: a b x y back guide start lb rb lt rt l3 r3 up down left right.
+        Stick axes lx, ly, rx, ry are in range -1.0 .. 1.0 (0.0 centered)."""
+        args: dict = {"buttons": ",".join(buttons)}
+        if type:
+            args["type"] = type
+        if lx != 0.0:
+            args["lx"] = float(lx)
+        if ly != 0.0:
+            args["ly"] = float(ly)
+        if rx != 0.0:
+            args["rx"] = float(rx)
+        if ry != 0.0:
+            args["ry"] = float(ry)
+        if lt is not None:
+            args["lt"] = float(lt)
+        if rt is not None:
+            args["rt"] = float(rt)
+        reply = self._call("sdlpad", **args)
+        if hold > 0:
+            time.sleep(hold)
+            release_args: dict = {"buttons": "", "lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0}
+            if lt is not None:
+                release_args["lt"] = 0.0
+            if rt is not None:
+                release_args["rt"] = 0.0
+            self._call("sdlpad", **release_args)
+            time.sleep(0.05)
+        return reply
 
     def actuators(self) -> list[dict]:
         """Vibration per pad port: {"small": 0/1, "large": 0..255, "changes": n}."""

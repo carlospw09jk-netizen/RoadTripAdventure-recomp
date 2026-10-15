@@ -57,6 +57,12 @@ def main():
     # sse2neon is fetched for ARM builds only, bc7enc for builds other than Android.
     optional = {"sse2neon": "sse2neon-src", "bc7enc": "bc7enc-src"}
     comps = [c for c in COMPONENTS if c[0] not in optional or (build / "_deps" / optional[c[0]]).is_dir()]
+    # paraLLEl-GS (LGPL 3) is linked only when RT_REFERENCE_RENDERERS=ON; Granite and volk always
+    # ship (the hardware GS and the Vulkan presenter run on them).
+    cache = build / "CMakeCache.txt"
+    if cache.is_file() and any(l.strip().startswith("RT_REFERENCE_RENDERERS:") and l.strip().endswith("=OFF")
+                               for l in cache.read_text().splitlines()):
+        comps = [c for c in comps if c[0] not in ("paraLLEl-GS",)]
     if args.llvm:
         comps.append(("LLVM", "the on-device compiler (clang, lld) and libc++", f"abs:{args.llvm}", ["LICENSE.TXT"]))
     if args.llvm_mingw:

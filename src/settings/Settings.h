@@ -54,6 +54,11 @@ namespace rt::settings
         AntiAliasing aa = AntiAliasing::None;
         Upscaler upscaler = Upscaler::None;
         float sharpness = 0.5f;
+        // Game enhancements (hooks in game/overrides.cpp)
+        bool fixSteeringBias = true;          // the left-turn steering ramp snapped to the target; mirror the right one
+        bool highLodCars = false;             // cars and wheels always at their highest level of detail
+        bool increasedDrawDistance = false;   // the far clip and fog distance doubled-plus
+        bool raceCarShadows = false;          // the car's shadows in races, as in town
         // Textures
         std::string texturePack;       // "" = none; folder name under textures/packs
         bool dumpTextures = false;

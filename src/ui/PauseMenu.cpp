@@ -176,8 +176,20 @@ namespace rt::ui
             int w = 0, h = 0;
         };
         std::map<int, SlotTexture> g_slotTextures;
-        // RT_MENU_SHOT
-        const char *g_shot = std::getenv("RT_MENU_SHOT");
+        // RT_MENU_SHOT: resolve relative paths under rt::paths::dataRoot() on Android so
+        // files/env.txt with RT_MENU_SHOT=menu.png writes to <data>/menu.png.
+        std::string menuShotPath()
+        {
+            const char *env = std::getenv("RT_MENU_SHOT");
+            if (!env || !*env)
+                return {};
+            std::filesystem::path p(env);
+#if defined(__ANDROID__)
+            if (p.is_relative())
+                p = rt::paths::dataRoot() / p;
+#endif
+            return p.string();
+        }
         int g_shotFrames = -1;
 
         template <typename T>
@@ -530,7 +542,7 @@ namespace rt::ui
                                 {}, "The radio in town: PEACH FM, E-RADIO or Off. Kept when you save your Adventure."});
             rows.push_back(heading("Graphics"));
             // The GS renderer: chosen at startup, so a change takes effect the next time the app starts.
-            if (capabilities().gpuGs)
+            if (capabilities().gpuGs && capabilities().referenceRenderers)
             {
                 const bool running = capabilities().hardwareGs;
                 const bool pending = (s.renderer == Renderer::Hardware) != running;
@@ -596,6 +608,18 @@ namespace rt::ui
                 rows.push_back({"Mipmaps", [&s] { return std::string(s.sharpTextures ? "Off (sharpest)" : "On (original)"); },
                                 [&s](int) { s.sharpTextures = !s.sharpTextures; changed(); }, {},
                                 "Off always samples the full-size texture, so distant roads and signs stay sharp.", false, true});
+            rows.push_back({"Fix steering bias", [&s] { return std::string(s.fixSteeringBias ? "On" : "Off"); },
+                            [&s](int) { s.fixSteeringBias = !s.fixSteeringBias; changed(); }, {},
+                            "Left turns ramp the wheel like right ones instead of snapping.", false, true});
+            rows.push_back({"High detail cars", [&s] { return std::string(s.highLodCars ? "On" : "Off"); },
+                            [&s](int) { s.highLodCars = !s.highLodCars; changed(); }, {},
+                            "Cars and wheels always use their most detailed models.", false, true});
+            rows.push_back({"Draw distance", [&s] { return std::string(s.increasedDrawDistance ? "On" : "Off"); },
+                            [&s](int) { s.increasedDrawDistance = !s.increasedDrawDistance; changed(); }, {},
+                            "Draws and fades the world further away. Costs speed.", false, true});
+            rows.push_back({"Race car shadows", [&s] { return std::string(s.raceCarShadows ? "On" : "Off"); },
+                            [&s](int) { s.raceCarShadows = !s.raceCarShadows; changed(); }, {},
+                            "Shows the cars' shadows during races too.", false, true});
             if (texturePackAvailability().ok)
             {
                 // Folder names in textures/packs, rescanned at most once a second.
@@ -1199,7 +1223,8 @@ namespace rt::ui
         // load, save_confirm, load_confirm, state_message.
         void shotStep()
         {
-            if (!g_shot)
+            const std::string shot = menuShotPath();
+            if (shot.empty())
                 return;
             const char *atText = std::getenv("RT_MENU_AT");
             const uint64_t at = atText ? std::strtoull(atText, nullptr, 10) : 900;
@@ -1797,7 +1822,7 @@ namespace rt::ui
         {
             th::scrim(dl, vmin, vmax, appear);
             drawConfirm(dl, vmin, vmax, appear);
-            if (g_shot && g_shotFrames >= 0)
+            if (!menuShotPath().empty() && g_shotFrames >= 0)
                 ++g_shotFrames;
             return;
         }
@@ -2063,22 +2088,35 @@ namespace rt::ui
         }
         drawPrompts(dl, max, min.x, n && rows[sel].change != nullptr);
 
-        if (g_shot && g_shotFrames >= 0 && !rt::states::busy())
+        if (!menuShotPath().empty() && g_shotFrames >= 0 && !rt::states::busy())
             ++g_shotFrames;
     }
 
     void menuShotAfterFrame()
     {
+        const std::string shot = menuShotPath();
+        if (shot.empty())
+            return;
         // Frame 20: the presenter saves this frame as it presents it; quit once it has.
-        if (g_shot && g_shotFrames == 20)
-            rt::host::screenshot(g_shot);
-        if (g_shot && g_shotFrames >= 22)
+        if (g_shotFrames == 20)
+            rt::host::screenshot(shot);
+        if (g_shotFrames >= 22)
         {
             // The presenter encodes the PNG on another thread: wait for it (up to 10 s).
-            for (int i = 0; i < 200 && !std::filesystem::exists(g_shot); ++i)
+            for (int i = 0; i < 200 && !std::filesystem::exists(shot); ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             std::fflush(nullptr);
+            if (!std::filesystem::exists(shot))
+            {
+                std::fprintf(stderr, "[menu-shot] timed out waiting for %s\n", shot.c_str());
+                std::_Exit(1);
+            }
             std::_Exit(0);
+        }
+        if (g_shotFrames > 600)
+        {
+            std::fprintf(stderr, "[menu-shot] timed out waiting for frame capture (%s)\n", shot.c_str());
+            std::_Exit(1);
         }
     }
 }

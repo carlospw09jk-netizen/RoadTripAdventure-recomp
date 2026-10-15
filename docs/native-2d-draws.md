@@ -6,12 +6,14 @@ and `sendTexturePackets` 0x207B50, PATH3).
 
 ## What it is
 
-- `gs_native_2d.{h,cpp}` (fork): `Native2DDecoder` interprets the registers 2D writes (PRIM, RGBAQ, ST, UV,
-  XYZ/XYZF 2 and 3, TEX0_1, TEX1_1, TEX2_1, CLAMP_1, ALPHA_1, TEST_1; PACKED, REGLIST and A+D) and returns a
-  `Native2DPacket`: ordered `Draw` (vertices of one run in one complete `Native2DState`: prim flags, TEX0,
-  TEX1, CLAMP, ALPHA, TEST), `Clut` (the palette load a TEX0/TEX2 write asks for) and `Raw` (verbatim GIF
-  bytes for what 2D doesn't own: context-2 state and the 3D's shadow sprite, TEXA, SCISSOR, XYOFFSET,
-  uploads).
+- `gs_native_2d.{h,cpp}` (fork): `Native2DDecoder` interprets the registers 2D and scene state packets write
+  (PRIM, RGBAQ, ST, UV, XYZ/XYZF 2 and 3, TEX0_1/2, TEX1_1/2, TEX2_1/2, CLAMP_1/2, ALPHA_1/2, TEST_1/2,
+  SCISSOR_1/2, FRAME_1/2, ZBUF_1/2, XYOFFSET_1/2, TEXA; PACKED, REGLIST and A+D) and returns a `Native2DPacket`:
+  ordered `Draw` (vertices of one run in one complete `Native2DState`: prim flags, TEX0, TEX1, CLAMP, ALPHA, TEST,
+  context index `ctxt`, optional `hasTexa`/`texa`, optional `hasScissor`/`scissor`), `Clut` (the palette load a
+  TEX0/TEX2 write asks for) and `Raw` (verbatim GIF bytes for what 2D doesn't own: Context-2 draws and state,
+  unowned registers, uploads). Context-2 state packets and shadow-darken passes (`PRIM = 0x246`) are tracked in
+  per-context register sets (`ctx[2]`).
 - Hook: `PS2Memory::setNative2DHook`, called from the VIF1 worker for each DIRECT payload and for PATH3 chains
   of at most 16 KB. Taken payloads leave a marker packet (A+D write of the id to register 0x7C) on the same
   path, so the GS thread handles them in order with everything else. Payloads without draws, and payloads the
@@ -42,9 +44,11 @@ Needed, and why:
   libgraph (`sceGsPutDrawEnv` 0x26FE80, `sceGsSwapDBuffDc` 0x26F738) writes them per frame buffer through
   DMA, and they are not in the draw record. Native replacement: intercept those libgraph calls and keep the
   environment as plain per-frame-buffer data.
-- A GIF parser for the verbatim `Raw` items (3D context-2 state packets, uploads) and for the PATH1 stream
-  around the native 3D draws. Native replacement: decode those state packets at `vifDirect` as well (the
-  survey lists them), and the loaders' uploads at `sendTexturePackets`.
+- State packets at `vifDirect`: Context-2 state registers (TEST_2, ALPHA_2, TEX0_2, TEX1_2, CLAMP_2, SCISSOR_2,
+  FRAME_2, ZBUF_2, XYOFFSET_2) and the shadow-darken pass are now decoded natively by `Native2DDecoder` into
+  `ctx[2]`, with Context-1 draws tagged with optional `texa` and `scissor`. Context-2 draws and state writes remain
+  forwarded as verbatim `Raw` items to keep the GS frontend environment in sync for subsequent 3D draws. A GIF parser
+  remains for verbatim `Raw` items (uploads, unowned registers) and for the PATH1 stream around the native 3D draws.
 - GS local memory and the CLUT: the textures. Needed until textures come from the game's files directly
   (the texture worker's job).
 - Frame-buffer reads (frame blend, the loading blur): a backend feature (sampling a render target), not GS

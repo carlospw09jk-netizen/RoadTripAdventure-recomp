@@ -220,6 +220,9 @@ else()
 endif()
 target_include_directories(${RT_APP_TARGET} PRIVATE src)
 target_link_libraries(${RT_APP_TARGET} PRIVATE ps2_runtime rt_sse2neon SDL3::SDL3 toml11::toml11 chdr-static)
+if(NOT RT_REFERENCE_RENDERERS)
+    target_compile_definitions(${RT_APP_TARGET} PRIVATE RT_NO_REFERENCE_RENDERERS=1)
+endif()
 
 if(RT_ENABLE_DEBUG_UI)
     target_sources(${RT_APP_TARGET} PRIVATE "${PS2X_RUNTIME_DIR}/src/lib/ps2_debug_panel.cpp"
@@ -372,6 +375,12 @@ if(BUILD_TESTING AND NOT ANDROID)
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_wide_layout.cpp")
     target_include_directories(native_2d_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
     add_test(NAME native_2d COMMAND native_2d_test)
+
+    add_executable(native_textures_test tests/native_textures_test.cpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/src/lib/gs/gs_native_textures.cpp")
+    target_include_directories(native_textures_test PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/PS2Recomp/ps2xRuntime/include")
+    set_target_properties(native_textures_test PROPERTIES CXX_STANDARD 20)
+    add_test(NAME native_textures COMMAND native_textures_test)
 endif()
 
 if(NOT ANDROID)

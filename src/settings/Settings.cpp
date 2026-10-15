@@ -125,6 +125,11 @@ namespace rt::settings
         s.aa = pick(q, "anti_aliasing", kAa, s.aa);
         s.upscaler = pick(q, "upscaler", kUpscalers, s.upscaler);
         s.sharpness = std::clamp(number(q, "sharpness", s.sharpness), 0.0f, 1.0f);
+        const toml::value &en = table(root, "enhancements");
+        s.fixSteeringBias = flag(en, "fix_steering_bias", s.fixSteeringBias);
+        s.highLodCars = flag(en, "high_lod_cars", s.highLodCars);
+        s.increasedDrawDistance = flag(en, "increased_draw_distance", s.increasedDrawDistance);
+        s.raceCarShadows = flag(en, "race_car_shadows", s.raceCarShadows);
         const toml::value &t = table(root, "textures");
         if (t.contains("pack") && t.at("pack").is_string())
             s.texturePack = t.at("pack").as_string();
@@ -174,6 +179,11 @@ namespace rt::settings
           << "anti_aliasing = \"" << name(s.aa) << "\"  # none, fxaa, smaa, taa\n"
           << "upscaler = \"" << name(s.upscaler) << "\"\n"
           << "sharpness = " << s.sharpness << "\n\n"
+          << "[enhancements]\n"
+          << "fix_steering_bias = " << (s.fixSteeringBias ? "true" : "false") << "  # left turns ramp like right ones\n"
+          << "high_lod_cars = " << (s.highLodCars ? "true" : "false") << "  # cars and wheels always at full detail\n"
+          << "increased_draw_distance = " << (s.increasedDrawDistance ? "true" : "false") << "  # see further (costs speed)\n"
+          << "race_car_shadows = " << (s.raceCarShadows ? "true" : "false") << "  # car shadows during races\n\n"
           << "[textures]\n"
           << "pack = \"" << s.texturePack << "\"  # a folder in textures/packs; empty = the original textures\n"
           << "pack_anisotropy = " << s.anisotropy << "  # filtering of pack images: 1 (trilinear), 2, 4, 8, 16\n"

@@ -18,7 +18,7 @@ from rtharness.adventure import FIELDS, boot_to_main_menu, continue_to_factory
 from rtharness.quick_race import open_course, start_race
 
 OLD = {"RT_GS_BACKEND": "hw", "RT_NATIVE_2D": "0"}
-NEW = {"RT_GS_BACKEND": "hw", "RT_NATIVE_2D": "1", "RT_NATIVE_DRAW_LOG": "1"}
+NEW = {"RT_GS_BACKEND": "hw", "RT_NATIVE_2D": "1", "RT_NATIVE_DRAW_LOG": "1", "RT_NATIVE_DRAW_LOG_MS": "500"}
 VERIFY = {**NEW, "RT_NATIVE_2D_VERIFY": "1"}
 
 

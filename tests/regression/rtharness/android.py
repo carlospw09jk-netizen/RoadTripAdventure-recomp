@@ -91,17 +91,39 @@ class AndroidGame(Game):
         reply = self._call("frame", path="-")
         return Frame(reply["width"], reply["height"], base64.b64decode(reply["data"]))
 
-    def sdl(self, *buttons: str, type: str | None = None, hold: float = 0.15):
-        """Holds buttons on a virtual SDL gamepad (type xbox, ps or switch) for `hold` seconds,
-        then releases them: input through SDL, as from a real controller (the app's menus,
-        rebinding, button icons). Names: a b x y back guide start lb rb lt rt l3 r3 up down left right."""
-        args = {"buttons": ",".join(buttons)}
+    def sdl(self, *buttons: str, type: str | None = None,
+            lx: float = 0.0, ly: float = 0.0, rx: float = 0.0, ry: float = 0.0,
+            lt: float | None = None, rt: float | None = None, hold: float = 0.15) -> dict:
+        """Holds buttons and stick axes on a virtual SDL gamepad (type xbox, ps or switch) for `hold` seconds,
+        then releases them (unless hold <= 0): input through SDL, as from a real controller (the app's menus,
+        rebinding, button icons). Names: a b x y back guide start lb rb lt rt l3 r3 up down left right.
+        Stick axes lx, ly, rx, ry are in range -1.0 .. 1.0 (0.0 centered)."""
+        args: dict = {"buttons": ",".join(buttons)}
         if type:
             args["type"] = type
-        self._call("sdlpad", **args)
-        time.sleep(hold)
-        self._call("sdlpad", buttons="")
-        time.sleep(0.1)
+        if lx != 0.0:
+            args["lx"] = float(lx)
+        if ly != 0.0:
+            args["ly"] = float(ly)
+        if rx != 0.0:
+            args["rx"] = float(rx)
+        if ry != 0.0:
+            args["ry"] = float(ry)
+        if lt is not None:
+            args["lt"] = float(lt)
+        if rt is not None:
+            args["rt"] = float(rt)
+        reply = self._call("sdlpad", **args)
+        if hold > 0:
+            time.sleep(hold)
+            release_args: dict = {"buttons": "", "lx": 0.0, "ly": 0.0, "rx": 0.0, "ry": 0.0}
+            if lt is not None:
+                release_args["lt"] = 0.0
+            if rt is not None:
+                release_args["rt"] = 0.0
+            self._call("sdlpad", **release_args)
+            time.sleep(0.1)
+        return reply
 
     def screencap(self, path: Path | str) -> Path:
         """The device's screen as it is (the game and the app's UI), as PNG."""

@@ -300,17 +300,23 @@ namespace rt::game
             return fail(std::string("The recompiler failed: ") + e.what());
         }
         // VU1 microcode -> C++. Optional: without it the VU1 interpreter runs the 3D code.
+        // RT_VU1_RECOMP=0 skips it (setup programs run as vu1hle, strips as native draws): halves compile time.
+        const char *vu1Env = std::getenv("RT_VU1_RECOMP");
+        const bool skipVu1 = vu1Env && *vu1Env == '0';
         std::vector<std::string> vu1Args{"ps2_vu1_recomp", "--elf", elf.string(), "--out", vu1Source.string(), "--split"};
         std::vector<char *> vu1Argv;
         for (auto &a : vu1Args)
             vu1Argv.push_back(a.data());
-        const bool haveVu1 = ps2x_vu1_recomp_main(int(vu1Argv.size()), vu1Argv.data()) == 0 && fs::exists(vu1Source);
+        const bool haveVu1 = !skipVu1 && ps2x_vu1_recomp_main(int(vu1Argv.size()), vu1Argv.data()) == 0 && fs::exists(vu1Source);
 #else
         if (run({(recompDir() / (std::string("ps2_recomp") + kExe)).string(), config.string()}, buildLog(), work) != 0)
             return fail("The recompiler failed.");
 
         // VU1 microcode -> C++. Optional: without it the VU1 interpreter runs the 3D code.
+        const char *vu1Env = std::getenv("RT_VU1_RECOMP");
+        const bool skipVu1 = vu1Env && *vu1Env == '0';
         const bool haveVu1 =
+            !skipVu1 &&
             fs::exists(recompDir() / (std::string("ps2_vu1_recomp") + kExe)) &&
             run({(recompDir() / (std::string("ps2_vu1_recomp") + kExe)).string(), "--elf", elf.string(), "--out", vu1Source.string(), "--split"},
                 buildLog(), work) == 0 &&

@@ -55,6 +55,7 @@ set(RT_NATIVE_ASSET_SOURCES
     audio/vag_loader.cpp        # authored VAG file/raw-stream loader -> PCM source storage
     audio/mixer.cpp             # authored mixer model: N channels -> stereo out, no device
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
+    audio/music_library.cpp     # injected BGM file-table index -> VAG resolver + SoundEngine bridge
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
     gameplay/progression.cpp    # authored progression mutations over the documented save fields
     gameplay/collectibles.cpp   # authored stamp and coin pickup model
@@ -195,6 +196,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_engine_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_engine_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_engine_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_music_library_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_music_library.cpp")
+    target_link_libraries(native_assets_music_library_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_music_library_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_music_library_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_camera_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_camera.cpp")
@@ -383,6 +390,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_world_test
             native_assets_game_loop_test
             native_assets_engine_test
+            native_assets_music_library_test
             native_assets_save_test
             native_assets_progression_test
             native_assets_collectibles_test

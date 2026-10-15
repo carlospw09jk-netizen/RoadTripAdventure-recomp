@@ -101,14 +101,15 @@ F1/F9 semantics, and whether the reverb labels map directly to SPU calls.
 Until then, these labels are sufficient for a bounded event decoder/MIDI-like
 export, but not for bit-accurate playback.
 
-## Provisional native offline-render constants
+## Native offline-render constants (now PROVEN against SNDMOD.IRX)
 
 `assets/tsq_sequencer.{h,cpp}` provides a deliberately device-independent PCM
-preview, not an emulation of the SNDMOD driver.  Until driver tracing proves
-otherwise it uses **60 ticks/sec**, assumes headerless TVB PCM is naturally
-**44100 Hz**, and treats **key 0 as the sample's natural pitch**.  Its pitch
-ratio is `2^((key + fineSemitones) / 12)`, with E4/E5/EA interpreted as signed
-little-endian `fineSemitones = value / 4096`.  E0 is a linear `value / 127`
-gain and E1 is independent linear left/right gain (`ll / 64`, `rr / 64`).
-These are useful, bounded preview choices only; all are unverified against the
-original driver.
+preview, not an emulation of the SNDMOD driver: **60 ticks/sec** (proven —
+`thread_sddr` ticks once per `WaitVblankEnd`), headerless TVB PCM assumed
+naturally **44100 Hz**, **key 48 = sample natural pitch** (proven — `freqtbl`
+at IRX 0x8A9C is 4096 at key 48 and doubles every 12 keys, i.e.
+`4096·2^((key-48)/12)`),
+E4/E5/EA signed `value/4096` semitone modifiers (structurally confirmed),
+linear E0 `value/127` and E1 `ll/64`,`rr/64` gains (proven up to the global
+SPU master scalar). See `sndmod-irx.md`; remaining open items are only the
+bit-accurate ADSR/reverb curves.

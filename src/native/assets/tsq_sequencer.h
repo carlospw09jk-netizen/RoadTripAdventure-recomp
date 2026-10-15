@@ -3,11 +3,11 @@
 // Bounded, provisional TSQ sequencer for diagnostics and offline PCM renders.
 // This is deliberately separate from the device-facing audio engine.
 //
-// The recovered format does not yet establish the PS2 driver's tick frequency,
-// TVB sample rate, or pitch-register equation.  This implementation therefore
-// uses kTsqTickHz=60 and treats key 0 as TVB's natural 44100-Hz pitch. E4/E5/EA
-// values are signed LE 16-bit fine tuning in semitones / 4096.  These choices
-// make output inspectable but are not bit-accurate emulation.
+// The shipped SNDMOD.IRX driver (see docs/native-reference/sndmod-irx.md)
+// proves kTsqTickHz=60 (one tick per WaitVblankEnd at NTSC) and the pitch base:
+// freqtbl[48]=4096, i.e. key 48 is the TVB sample's natural 44100-Hz pitch.
+// E4/E5/EA values are signed LE 16-bit linear pitch multipliers, value / 4096
+// (0 = disabled), matching the driver's freq*mult>>12 path.
 
 #include <cstdint>
 #include <span>
@@ -15,7 +15,8 @@
 
 namespace rt::native::assets {
 
-inline constexpr double kTsqTickHz = 60.0;  // Provisional; see header comment.
+inline constexpr double kTsqTickHz = 60.0;  // Proven: thread_sddr ticks per Vblank (NTSC).
+inline constexpr int kTsqNaturalKey = 48;   // Proven: freqtbl[48] = 4096 = natural pitch.
 
 enum class TsqNoteKind : std::uint8_t {
     NoteOn,

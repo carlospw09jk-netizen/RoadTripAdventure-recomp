@@ -58,7 +58,7 @@ struct Voice {
     double gain = 1.0;
     double left = 1.0;
     double right = 1.0;
-    double fineSemitones = 0.0;
+    double fineRatio = 1.0;
 };
 
 struct DecodedTrack {
@@ -76,7 +76,7 @@ DecodedTrack decodeTrack(std::span<const std::uint8_t> data, std::size_t start,
     double gain = 1.0;
     double left = 1.0;
     double right = 1.0;
-    double fineSemitones = 0.0;
+    double fineRatio = 1.0;
     bool active = false;
     Voice voice;
     std::size_t loops = 0;
@@ -100,7 +100,7 @@ DecodedTrack decodeTrack(std::span<const std::uint8_t> data, std::size_t start,
         } else if (status <= 0xdf) {
             release();
             voice = {tick, tick, static_cast<std::uint8_t>(status & 0x7f), program,
-                     gain, left, right, fineSemitones};
+                     gain, left, right, fineRatio};
             active = true;
             emit(TsqNoteKind::NoteOn, voice.key);
         } else if (status == 0xf0) {
@@ -130,7 +130,7 @@ DecodedTrack decodeTrack(std::span<const std::uint8_t> data, std::size_t start,
             const auto value = static_cast<std::int16_t>(readLe16(data, pc));
             pc += 2;
             out.stats.consumedBytes += 2;
-            fineSemitones = static_cast<double>(value) / 4096.0;
+            fineRatio = static_cast<double>(value) / 4096.0;
             emit(TsqNoteKind::Pitch, 0, value);
         } else if (status == 0xf8 && pc + 1 < data.size()) {
             const auto relative = static_cast<std::int16_t>(readLe16(data, pc));
@@ -216,7 +216,11 @@ void seqRenderMusic(std::span<const std::uint8_t> tsqData,
                 static_cast<double>(voice.startTick) * sampleRate / kTsqTickHz));
             const std::size_t last = std::min(frames, static_cast<std::size_t>(
                 static_cast<double>(voice.endTick) * sampleRate / kTsqTickHz));
-            const double ratio = std::exp2((static_cast<double>(voice.key) + voice.fineSemitones) / 12.0);
+            // IRX-proven: freq = freqtbl[key] (4096 natural at key 48) with an
+            // optional linear multiplier (E4/E5/EA value / 4096, 0 = disabled).
+            const double ratio =
+                std::exp2((static_cast<double>(voice.key) - kTsqNaturalKey) / 12.0) *
+                (voice.fineRatio > 0.0 ? voice.fineRatio : 1.0);
             for (std::size_t frame = first; frame < last; ++frame) {
                 const double position = static_cast<double>(frame - first) * ratio;
                 const auto index = static_cast<std::size_t>(position);

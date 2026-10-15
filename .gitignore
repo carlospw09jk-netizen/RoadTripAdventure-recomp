@@ -45,3 +45,4 @@ ps2_log.txt
 
 # Save states (derived from the game)
 *.rtstate
+menu.png

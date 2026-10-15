@@ -38,6 +38,7 @@ set(RT_NATIVE_ASSET_SOURCES
     assets/image_converter.cpp  # texture upload chain -> RGBA8 ImageRecord
     assets/image_loader.cpp     # ImageRecord -> NativeImage
     assets/model_loader.cpp     # MeshRecord + images -> NativeModel
+    assets/music_seq.cpp        # Road Trip TVB voice-bank and TSQ sequence container parsers
     gameplay/car_physics.cpp    # authored car-physics tick (no guest code)
     gameplay/camera.cpp         # authored chase camera (spring/slew + look-at view matrix)
     gameplay/task.cpp           # authored task scheduler (48-slot pool + parent/sibling tree)
@@ -209,6 +210,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_music_library_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_music_library_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_music_library_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_music_seq_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_music_seq.cpp")
+    target_link_libraries(native_assets_music_seq_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_music_seq_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_music_seq_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_camera_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_camera.cpp")
@@ -399,6 +406,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_game_loop_test
             native_assets_engine_test
             native_assets_music_library_test
+            native_assets_music_seq_test
             native_assets_save_test
             native_assets_progression_test
             native_assets_collectibles_test

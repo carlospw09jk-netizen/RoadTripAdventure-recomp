@@ -7,6 +7,7 @@
 #include "gameplay/input.h"
 #include "gameplay/menu.h"
 #include "preview/preview.h"
+#include "preview/race_hud.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -347,6 +348,19 @@ std::vector<rt::native::preview::ScreenQuad> menuQuads(
     }
     return quads;
 }
+
+void compositeOver(std::vector<std::uint8_t>& scene, const std::vector<std::uint8_t>& overlay) {
+    if (scene.size() != overlay.size()) return;
+    for (std::size_t pixel = 0; pixel < scene.size(); pixel += 4) {
+        const float alpha = static_cast<float>(overlay[pixel + 3]) / 255.f;
+        if (alpha <= 0.f) continue;
+        for (std::size_t channel = 0; channel < 3; ++channel) {
+            const float source = static_cast<float>(overlay[pixel + channel]);
+            const float destination = static_cast<float>(scene[pixel + channel]);
+            scene[pixel + channel] = static_cast<std::uint8_t>(source * alpha + destination * (1.f - alpha) + .5f);
+        }
+    }
+}
 } // namespace
 
 int main() {
@@ -371,7 +385,10 @@ int main() {
         if (!renderer) { std::cerr << "scene resize: " << error << "\n"; return false; }
         return true;
     };
-    auto car = demoCar(); rt::native::gameplay::GameLoop loop;
+    auto car = demoCar();
+    rt::native::gameplay::GameLoopParams loopParams;
+    loopParams.raceMode = true;
+    rt::native::gameplay::GameLoop loop(loopParams);
     rt::native::gameplay::ControllerConfig controllerConfig;
     bool playerDriven = true, running = true; int frames = 0;
     std::uint64_t simulationFrame = 0;
@@ -437,11 +454,22 @@ int main() {
             bool retry = false;
             do {
                 std::vector<std::uint8_t> pixels;
-                const bool rendered = state == AppState::PLAYING
-                    ? rt::native::preview::previewRenderScene(renderer, car, snapshot, loop.world(), pixels, error)
-                    : rt::native::preview::previewRender2D(renderer, menuQuads(state, menuFlow,
-                                                           static_cast<int>(presenter.extent.width), static_cast<int>(presenter.extent.height)),
-                                                           {.025f, .035f, .075f, 1.f}, pixels, error);
+                bool rendered = false;
+                if (state == AppState::PLAYING) {
+                    rendered = rt::native::preview::previewRenderScene(renderer, car, snapshot, loop.world(), pixels, error);
+                    if (rendered) {
+                        std::vector<std::uint8_t> hudPixels;
+                        rendered = rt::native::preview::previewRender2D(
+                            renderer, rt::native::preview::raceHudQuads(snapshot, loop.params().totalLaps,
+                                                                         static_cast<int>(presenter.extent.width), static_cast<int>(presenter.extent.height)),
+                            {0.f, 0.f, 0.f, 0.f}, hudPixels, error);
+                        if (rendered) compositeOver(pixels, hudPixels);
+                    }
+                } else {
+                    rendered = rt::native::preview::previewRender2D(renderer, menuQuads(state, menuFlow,
+                                                                        static_cast<int>(presenter.extent.width), static_cast<int>(presenter.extent.height)),
+                                                                        {.025f, .035f, .075f, 1.f}, pixels, error);
+                }
                 if (!rendered || !present(presenter, pixels, retry, error)) {
                     std::cerr << "render: " << error << "\n"; running = false; break;
                 }

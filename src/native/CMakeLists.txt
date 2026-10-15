@@ -49,6 +49,7 @@ set(RT_NATIVE_ASSET_SOURCES
     gameplay/results.cpp        # authored post-race result snapshot and record updates
     gameplay/session.cpp        # authored Adventure explore/race/results session loop
     gameplay/geometry.cpp       # authored ground-plane zone predicates and arrival checks
+    gameplay/minigames.cpp      # authored mini-game scoring predicates and score model
     gameplay/route.cpp          # authored race-route zones, progress, and arrival model
     audio/vag.cpp               # authored PS ADPCM (VAG) decoder (no PS2/guest code)
     audio/vag_loader.cpp        # authored VAG file/raw-stream loader -> PCM source storage
@@ -56,6 +57,7 @@ set(RT_NATIVE_ASSET_SOURCES
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
     gameplay/progression.cpp    # authored progression mutations over the documented save fields
+    gameplay/collectibles.cpp   # authored stamp and coin pickup model
     gameplay/shop.cpp           # authored item-shop buy/sell and selection model
     gameplay/memcard.cpp        # host-file replacement for two memory-card save slots
     gameplay/menu.cpp           # authored menu, pause, and controller-config state models
@@ -224,6 +226,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_compile_features(native_assets_progression_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_progression_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
+    add_executable(native_assets_collectibles_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_collectibles.cpp")
+    target_link_libraries(native_assets_collectibles_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_collectibles_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_collectibles_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
     add_executable(native_assets_shop_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_shop.cpp")
     target_link_libraries(native_assets_shop_test PRIVATE rt_native_assets)
@@ -294,6 +302,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_geometry_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_geometry_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_geometry_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_minigames_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_minigames.cpp")
+    target_link_libraries(native_assets_minigames_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_minigames_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_minigames_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_route_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_route.cpp")
@@ -371,6 +385,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_engine_test
             native_assets_save_test
             native_assets_progression_test
+            native_assets_collectibles_test
             native_assets_shop_test
             native_assets_memcard_test
             native_assets_daynight_test
@@ -379,6 +394,7 @@ if(RT_NATIVE_ASSETS_COVERAGE)
         list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_results_test)
         list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_session_test)
         list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_geometry_test)
+        list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_minigames_test)
         list(APPEND RT_NATIVE_COVERAGE_TARGETS native_assets_route_test)
     endif()
     foreach(rt_native_cov_target IN LISTS RT_NATIVE_COVERAGE_TARGETS)

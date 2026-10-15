@@ -27,6 +27,8 @@ jobs:
           echo "NDK=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
       - name: Submodules
         run: python3 scripts/pipeline.py bootstrap
+      - name: Patch Granite legacy semaphore self-deadlock
+        run: python3 scripts/ci/patch_granite_nolock.py
       - name: Cache the on-device compiler
         id: llvm
         uses: actions/cache@v4

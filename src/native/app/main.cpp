@@ -4,6 +4,7 @@
 #include "assets/native_model.h"
 #include "gameplay/game_loop.h"
 #include "gameplay/input.h"
+#include "gameplay/menu.h"
 #include "preview/preview.h"
 
 #include <SDL3/SDL.h>
@@ -214,6 +215,55 @@ rt::native::assets::NativeModel demoCar() {
     return car;
 }
 int envFrames() { const char* value = std::getenv("RT_APP_FRAMES"); return value ? std::max(0, std::atoi(value)) : 0; }
+
+enum class AppState { TITLE, MENU, PLAYING };
+
+const char* appStateName(AppState state) {
+    switch (state) {
+    case AppState::TITLE: return "TITLE";
+    case AppState::MENU: return "MENU";
+    case AppState::PLAYING: return "PLAYING";
+    }
+    return "UNKNOWN";
+}
+
+AppState initialAppState() {
+    const char* value = std::getenv("RT_APP_STATE");
+    if (value && std::strcmp(value, "MENU") == 0) return AppState::MENU;
+    if (value && std::strcmp(value, "PLAYING") == 0) return AppState::PLAYING;
+    return AppState::TITLE;
+}
+
+std::vector<rt::native::preview::ScreenQuad> menuQuads(
+    AppState state, const rt::native::gameplay::MenuFlow& flow, int width, int height) {
+    using Quad = rt::native::preview::ScreenQuad;
+    const float scale = std::min(static_cast<float>(width) / 1024.f, static_cast<float>(height) / 720.f);
+    const float offsetX = (width - 1024.f * scale) * .5f;
+    const float offsetY = (height - 720.f * scale) * .5f;
+    const auto rect = [=](float x, float y, float w, float h, std::array<float, 4> color) {
+        return Quad{offsetX + x * scale, offsetY + y * scale, w * scale, h * scale, color};
+    };
+    const std::array<float, 4> panelColor{.08f, .12f, .22f, 1.f};
+    const std::array<float, 4> rowColor{.22f, .32f, .52f, 1.f};
+    const std::array<float, 4> selectedRowColor{.36f, .56f, .86f, 1.f};
+    const std::array<float, 4> cursorColor{1.f, .72f, .16f, 1.f};
+    std::vector<Quad> quads{rect(112, 72, 800, 576, panelColor)};
+    if (state == AppState::TITLE) {
+        quads.push_back(rect(202, 216, 620, 80, {.55f, .78f, 1.f, 1.f}));
+        quads.push_back(rect(286, 386, 452, 30, {.88f, .93f, 1.f, 1.f}));
+        return quads;
+    }
+
+    quads.push_back(rect(202, 120, 620, 34, {.55f, .78f, 1.f, 1.f}));
+    constexpr float rowX = 234, rowY = 204, rowWidth = 556, rowHeight = 58, rowGap = 27;
+    for (std::size_t row = 0; row < 4; ++row) {
+        const float y = rowY + static_cast<float>(row) * (rowHeight + rowGap);
+        if (row == flow.topLevelCursor) quads.push_back(rect(198, y - 8, 628, rowHeight + 16, cursorColor));
+        quads.push_back(rect(rowX, y, rowWidth, rowHeight, row == flow.topLevelCursor ? selectedRowColor : rowColor));
+        quads.push_back(rect(rowX + 28, y + 19, rowWidth - 56, 20, {.88f, .93f, 1.f, 1.f}));
+    }
+    return quads;
+}
 } // namespace
 
 int main() {
@@ -240,15 +290,43 @@ int main() {
     rt::native::gameplay::ControllerConfig controllerConfig;
     bool playerDriven = true, running = true; int frames = 0;
     std::uint64_t simulationFrame = 0;
+    AppState state = initialAppState();
+    rt::native::gameplay::MenuFlow menuFlow;
+    if (state == AppState::MENU) menuFlow.screen = rt::native::gameplay::MenuScreen::MODE_SELECT;
     auto previous = std::chrono::steady_clock::now();
     while (running && (!maxFrames || frames < maxFrames)) {
         SDL_Event event; bool resize = false;
-        while (SDL_PollEvent(&event)) { if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) running = false;
-            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_TAB) playerDriven = !playerDriven;
+        rt::native::gameplay::MenuInput menuInput;
+        bool titleAdvance = false, returnToMenu = false;
+        while (SDL_PollEvent(&event)) { if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) running = false;
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat) {
+                if (state == AppState::TITLE) titleAdvance = true;
+                if (state == AppState::MENU) {
+                    menuInput.up = menuInput.up || event.key.scancode == SDL_SCANCODE_UP;
+                    menuInput.down = menuInput.down || event.key.scancode == SDL_SCANCODE_DOWN;
+                    menuInput.confirm = menuInput.confirm || event.key.scancode == SDL_SCANCODE_RETURN;
+                    menuInput.cancel = menuInput.cancel || event.key.scancode == SDL_SCANCODE_ESCAPE;
+                }
+                if (state == AppState::PLAYING && event.key.scancode == SDL_SCANCODE_ESCAPE) returnToMenu = true;
+                if (state == AppState::PLAYING && event.key.scancode == SDL_SCANCODE_TAB) playerDriven = !playerDriven;
+            }
             if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) resize = true; }
         if (!running) break;
         if (resize && !recreateSwapchain()) break;
         const auto now = std::chrono::steady_clock::now(); const float dt = std::min(std::chrono::duration<float>(now - previous).count(), 0.1f); previous = now;
+        if (state == AppState::TITLE && titleAdvance) {
+            menuFlow = {};
+            (void)rt::native::gameplay::tickMenuFlow(menuFlow, {.confirm = true}, dt);
+            state = AppState::MENU;
+        } else if (state == AppState::MENU) {
+            const auto menuEvent = rt::native::gameplay::tickMenuFlow(menuFlow, menuInput, dt);
+            if (menuEvent.type == rt::native::gameplay::MenuEventType::MODE_SELECTED) state = AppState::PLAYING;
+            if (menuEvent.type == rt::native::gameplay::MenuEventType::CANCEL && menuFlow.screen == rt::native::gameplay::MenuScreen::TITLE)
+                state = AppState::TITLE;
+        } else if (state == AppState::PLAYING && returnToMenu) {
+            menuFlow.screen = rt::native::gameplay::MenuScreen::MODE_SELECT;
+            state = AppState::MENU;
+        }
         const bool* keys = SDL_GetKeyboardState(nullptr);
         const auto held = [keys](SDL_Scancode key) { return keys && keys[key]; };
         rt::native::gameplay::PadState pad;
@@ -262,14 +340,24 @@ int main() {
         if (held(SDL_SCANCODE_SPACE))
             rt::native::gameplay::setPressed(pad, controllerConfig.getButtonConfig(rt::native::gameplay::ControllerAction::REVERSE));
         const auto input = rt::native::gameplay::playerCarInput(pad, axes, controllerConfig);
-        const auto snapshot = playerDriven ? loop.tickPlayer(dt, {}, input) : loop.tick(dt, {}); simulationFrame = snapshot.frame;
-        std::cout << "rt-app input mode=" << (playerDriven ? "player" : "ai") << " steer=" << input.steer
-                  << " gas=" << input.gas << " brake=" << input.brake << " reverse=" << input.reverse << "\n";
+        rt::native::gameplay::FrameSnapshot snapshot;
+        if (state == AppState::PLAYING) {
+            snapshot = playerDriven ? loop.tickPlayer(dt, {}, input) : loop.tick(dt, {});
+            simulationFrame = snapshot.frame;
+            std::cout << "rt-app input mode=" << (playerDriven ? "player" : "ai") << " steer=" << input.steer
+                      << " gas=" << input.gas << " brake=" << input.brake << " reverse=" << input.reverse << "\n";
+        }
+        std::cout << "rt-app state=" << appStateName(state) << " menu_cursor_row=" << menuFlow.topLevelCursor << "\n";
         if (!noRender && presenter.extent.width && presenter.extent.height) {
             bool retry = false;
             do {
                 std::vector<std::uint8_t> pixels;
-                if (!rt::native::preview::previewRenderScene(renderer, car, snapshot, loop.world(), pixels, error) || !present(presenter, pixels, retry, error)) {
+                const bool rendered = state == AppState::PLAYING
+                    ? rt::native::preview::previewRenderScene(renderer, car, snapshot, loop.world(), pixels, error)
+                    : rt::native::preview::previewRender2D(renderer, menuQuads(state, menuFlow,
+                                                           static_cast<int>(presenter.extent.width), static_cast<int>(presenter.extent.height)),
+                                                           {.025f, .035f, .075f, 1.f}, pixels, error);
+                if (!rendered || !present(presenter, pixels, retry, error)) {
                     std::cerr << "render: " << error << "\n"; running = false; break;
                 }
                 if (retry && !recreateSwapchain()) { running = false; break; }

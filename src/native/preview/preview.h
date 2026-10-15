@@ -17,6 +17,16 @@ struct ModelStats {
     std::array<float, 3> bmax{};
 };
 
+// A solid, axis-aligned rectangle in target pixels. (x, y) is the top-left
+// corner; positive y moves down the image.
+struct ScreenQuad {
+    float x = 0;
+    float y = 0;
+    float width = 0;
+    float height = 0;
+    std::array<float, 4> color{1, 1, 1, 1};
+};
+
 ModelStats computeStats(const assets::NativeModel& model);
 
 // RGBA8 8-bit PNG (stored deflate blocks; no external dependency).
@@ -35,6 +45,12 @@ bool previewRender(Renderer* r, const assets::NativeModel& model, const float* v
 bool previewRenderScene(Renderer* r, const assets::NativeModel& car,
                         const gameplay::FrameSnapshot& snapshot, const gameplay::World& world,
                         std::vector<std::uint8_t>& rgbaOut, std::string& error);
+// Draws solid screen-space rectangles over clearColor. Rectangle coordinates
+// are target pixels with a top-left origin; this path has no lighting, depth,
+// or texture sampling.
+bool previewRender2D(Renderer* r, const std::vector<ScreenQuad>& quads,
+                     const std::array<float, 4>& clearColor,
+                     std::vector<std::uint8_t>& rgbaOut, std::string& error);
 void previewDestroy(Renderer* r);
 
 // One-shot convenience wrappers (init -> render -> destroy).

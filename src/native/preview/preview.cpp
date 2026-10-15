@@ -139,6 +139,9 @@ struct Renderer {
     VkShaderModule vs = VK_NULL_HANDLE, fs = VK_NULL_HANDLE;
     VkPipelineLayout pl = VK_NULL_HANDLE;
     VkPipeline pipe = VK_NULL_HANDLE;
+    VkShaderModule uiVs = VK_NULL_HANDLE, uiFs = VK_NULL_HANDLE;
+    VkPipelineLayout uiPl = VK_NULL_HANDLE;
+    VkPipeline uiPipe = VK_NULL_HANDLE;
     VkBuffer rb = VK_NULL_HANDLE; VkDeviceMemory rbm = VK_NULL_HANDLE;
     VkCommandPool pool = VK_NULL_HANDLE;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -146,6 +149,9 @@ struct Renderer {
     VkBuffer vb = VK_NULL_HANDLE, ib = VK_NULL_HANDLE;
     VkDeviceMemory vbm = VK_NULL_HANDLE, ibm = VK_NULL_HANDLE;
     VkDeviceSize vbCap = 0, ibCap = 0;
+    VkBuffer uiVb = VK_NULL_HANDLE;
+    VkDeviceMemory uiVbm = VK_NULL_HANDLE;
+    VkDeviceSize uiVbCap = 0;
 };
 
 static const VkMemoryPropertyFlags kHostMem = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -195,12 +201,18 @@ void previewDestroy(Renderer* R) {
         if (R->vbm) vkFreeMemory(R->dev, R->vbm, nullptr);
         if (R->ib) vkDestroyBuffer(R->dev, R->ib, nullptr);
         if (R->ibm) vkFreeMemory(R->dev, R->ibm, nullptr);
+        if (R->uiVb) vkDestroyBuffer(R->dev, R->uiVb, nullptr);
+        if (R->uiVbm) vkFreeMemory(R->dev, R->uiVbm, nullptr);
         if (R->rb) vkDestroyBuffer(R->dev, R->rb, nullptr);
         if (R->rbm) vkFreeMemory(R->dev, R->rbm, nullptr);
         if (R->pipe) vkDestroyPipeline(R->dev, R->pipe, nullptr);
         if (R->pl) vkDestroyPipelineLayout(R->dev, R->pl, nullptr);
         if (R->vs) vkDestroyShaderModule(R->dev, R->vs, nullptr);
         if (R->fs) vkDestroyShaderModule(R->dev, R->fs, nullptr);
+        if (R->uiPipe) vkDestroyPipeline(R->dev, R->uiPipe, nullptr);
+        if (R->uiPl) vkDestroyPipelineLayout(R->dev, R->uiPl, nullptr);
+        if (R->uiVs) vkDestroyShaderModule(R->dev, R->uiVs, nullptr);
+        if (R->uiFs) vkDestroyShaderModule(R->dev, R->uiFs, nullptr);
         if (R->fb) vkDestroyFramebuffer(R->dev, R->fb, nullptr);
         if (R->rp) vkDestroyRenderPass(R->dev, R->rp, nullptr);
         if (R->colView) vkDestroyImageView(R->dev, R->colView, nullptr);
@@ -348,6 +360,27 @@ static bool initImpl(Renderer& R, std::uint32_t W, std::uint32_t H, std::string&
     gpi.pDepthStencilState = &ds; gpi.pColorBlendState = &cb; gpi.layout = pl; gpi.renderPass = rp;
     VkPipeline& pipe = R.pipe;
     VK_TRY(vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &gpi, nullptr, &pipe), "vkCreateGraphicsPipelines");
+
+    if (!makeShader(kPreviewUiVertSpv, sizeof(kPreviewUiVertSpv), R.uiVs)) return false;
+    if (!makeShader(kPreviewUiFragSpv, sizeof(kPreviewUiFragSpv), R.uiFs)) return false;
+    VkPipelineShaderStageCreateInfo uiStages[2]{};
+    uiStages[0] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_VERTEX_BIT, R.uiVs, "main", nullptr};
+    uiStages[1] = {VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0, VK_SHADER_STAGE_FRAGMENT_BIT, R.uiFs, "main", nullptr};
+    VkVertexInputBindingDescription uiBind{0, 24, VK_VERTEX_INPUT_RATE_VERTEX};
+    VkVertexInputAttributeDescription uiAttrs[2] = {
+        {0, 0, VK_FORMAT_R32G32_SFLOAT, 0},
+        {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, 8},
+    };
+    VkPipelineVertexInputStateCreateInfo uiVin{VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    uiVin.vertexBindingDescriptionCount = 1; uiVin.pVertexBindingDescriptions = &uiBind;
+    uiVin.vertexAttributeDescriptionCount = 2; uiVin.pVertexAttributeDescriptions = uiAttrs;
+    VkPipelineDepthStencilStateCreateInfo uiDs{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    VkPipelineLayoutCreateInfo uiPli{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
+    VK_TRY(vkCreatePipelineLayout(dev, &uiPli, nullptr, &R.uiPl), "vkCreatePipelineLayout(ui)");
+    VkGraphicsPipelineCreateInfo uiGpi = gpi;
+    uiGpi.stageCount = 2; uiGpi.pStages = uiStages; uiGpi.pVertexInputState = &uiVin;
+    uiGpi.pDepthStencilState = &uiDs; uiGpi.layout = R.uiPl;
+    VK_TRY(vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &uiGpi, nullptr, &R.uiPipe), "vkCreateGraphicsPipelines(ui)");
 
     const VkDeviceSize rbSize = static_cast<VkDeviceSize>(W) * H * 4;
     if (!makeBuffer(R, error, rbSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT, R.rb, R.rbm)) return false;
@@ -536,6 +569,65 @@ bool previewRenderScene(Renderer* r, const assets::NativeModel& car, const gamep
     // matrices are made, so fog range must use the same scale as vView.
     const float fog[4] = {fogColor[0], fogColor[1], fogColor[2], s.lighting.fogFar * .1f};
     return renderGeometry(r, vertices, indices, s.view, s.proj, clear, fog, rgbaOut, error);
+}
+
+struct UiVertex { float x, y, r, g, b, a; };
+
+bool previewRender2D(Renderer* Rp, const std::vector<ScreenQuad>& quads,
+                     const std::array<float, 4>& clearColor,
+                     std::vector<std::uint8_t>& rgbaOut, std::string& error) {
+    if (!Rp) { error = "null renderer"; return false; }
+    Renderer& R = *Rp;
+    std::vector<UiVertex> vertices;
+    vertices.reserve(quads.size() * 6);
+    const auto ndcX = [&](float x) { return x * 2.0f / static_cast<float>(R.W) - 1.0f; };
+    const auto ndcY = [&](float y) { return y * 2.0f / static_cast<float>(R.H) - 1.0f; };
+    for (const ScreenQuad& q : quads) {
+        if (q.width <= 0 || q.height <= 0) continue;
+        const UiVertex a{ndcX(q.x), ndcY(q.y), q.color[0], q.color[1], q.color[2], q.color[3]};
+        const UiVertex b{ndcX(q.x + q.width), ndcY(q.y), q.color[0], q.color[1], q.color[2], q.color[3]};
+        const UiVertex c{ndcX(q.x + q.width), ndcY(q.y + q.height), q.color[0], q.color[1], q.color[2], q.color[3]};
+        const UiVertex d{ndcX(q.x), ndcY(q.y + q.height), q.color[0], q.color[1], q.color[2], q.color[3]};
+        vertices.insert(vertices.end(), {a, c, b, a, d, c});
+    }
+    if (vertices.empty()) { error = "no non-empty screen quads"; return false; }
+    const VkDeviceSize vbSize = vertices.size() * sizeof(UiVertex);
+    if (!growBuffer(R, error, vbSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, R.uiVb, R.uiVbm, R.uiVbCap)) return false;
+    void* p;
+    VK_TRY(vkMapMemory(R.dev, R.uiVbm, 0, vbSize, 0, &p), "vkMapMemory(ui)");
+    std::memcpy(p, vertices.data(), vbSize); vkUnmapMemory(R.dev, R.uiVbm);
+
+    VkCommandBuffer cmd = R.cmd;
+    vkResetCommandBuffer(cmd, 0);
+    VkCommandBufferBeginInfo bbi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    vkBeginCommandBuffer(cmd, &bbi);
+    VkClearValue clears[2]{};
+    clears[0].color = {{clearColor[0], clearColor[1], clearColor[2], clearColor[3]}};
+    clears[1].depthStencil = {1.0f, 0};
+    VkRenderPassBeginInfo rbi{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+    rbi.renderPass = R.rp; rbi.framebuffer = R.fb; rbi.renderArea = {{0, 0}, {R.W, R.H}};
+    rbi.clearValueCount = 2; rbi.pClearValues = clears;
+    vkCmdBeginRenderPass(cmd, &rbi, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, R.uiPipe);
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &R.uiVb, &offset);
+    vkCmdDraw(cmd, static_cast<std::uint32_t>(vertices.size()), 1, 0, 0);
+    vkCmdEndRenderPass(cmd);
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    copy.imageExtent = {R.W, R.H, 1};
+    vkCmdCopyImageToBuffer(cmd, R.colImg, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, R.rb, 1, &copy);
+    vkEndCommandBuffer(cmd);
+    VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    si.commandBufferCount = 1; si.pCommandBuffers = &cmd;
+    VK_TRY(vkQueueSubmit(R.queue, 1, &si, VK_NULL_HANDLE), "vkQueueSubmit(ui)");
+    VK_TRY(vkQueueWaitIdle(R.queue), "vkQueueWaitIdle(ui)");
+    const VkDeviceSize rbSize = static_cast<VkDeviceSize>(R.W) * R.H * 4;
+    rgbaOut.resize(rbSize);
+    VK_TRY(vkMapMemory(R.dev, R.rbm, 0, rbSize, 0, &p), "vkMapMemory(readback ui)");
+    std::memcpy(rgbaOut.data(), p, rbSize);
+    vkUnmapMemory(R.dev, R.rbm);
+    return true;
 }
 
 bool renderModel(const assets::NativeModel& model, std::uint32_t W, std::uint32_t H,

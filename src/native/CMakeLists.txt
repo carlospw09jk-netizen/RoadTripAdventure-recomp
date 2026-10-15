@@ -111,6 +111,11 @@ if(Vulkan_FOUND)
     target_link_libraries(rt-asset-scene PRIVATE rt_native_assets Vulkan::Vulkan)
     target_compile_features(rt-asset-scene PRIVATE cxx_std_20)
     target_compile_options(rt-asset-scene PRIVATE ${RT_NATIVE_WARN_OPTIONS} -Wno-missing-field-initializers)
+
+    add_executable(rt-asset-menu tools/menu_main.cpp preview/preview.cpp)
+    target_link_libraries(rt-asset-menu PRIVATE rt_native_assets Vulkan::Vulkan)
+    target_compile_features(rt-asset-menu PRIVATE cxx_std_20)
+    target_compile_options(rt-asset-menu PRIVATE ${RT_NATIVE_WARN_OPTIONS} -Wno-missing-field-initializers)
 endif()
 
 # ---------------------------------------------------------------- tests (not run)

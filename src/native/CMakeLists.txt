@@ -43,11 +43,13 @@ set(RT_NATIVE_ASSET_SOURCES
     gameplay/ai.cpp             # authored waypoint traffic brain (no guest code)
     gameplay/world.cpp          # authored world/field model (8x8 cells, road path, cull)
     gameplay/daynight.cpp       # authored day/night lighting cycle (phase bands, fog, light-matrix blend)
+    gameplay/daycycle.cpp       # authored scripted day/night lighting step machine
     audio/vag.cpp               # authored PS ADPCM (VAG) decoder (no PS2/guest code)
     audio/mixer.cpp             # authored mixer model: N channels -> stereo out, no device
     audio/engine.cpp            # authored sound engine: voices + BGM/SE + mixer driver (replaces SNDMOD RPC)
     gameplay/save.cpp           # authored memory-card save parse/serialize/migrate (13,384-byte progress block)
     gameplay/menu.cpp           # authored menu, pause, and controller-config state models
+    gameplay/input.cpp          # authored player input (pad/analog -> CarInput)
     gameplay/game_loop.cpp      # authored simulation frame (task walker -> AI/car/camera -> cull -> snapshot)
 )
 add_library(rt_native_assets STATIC ${RT_NATIVE_ASSET_SOURCES})
@@ -181,6 +183,11 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_compile_features(native_assets_save_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_save_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
+    add_executable(native_assets_input_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_input.cpp")
+    target_link_libraries(native_assets_input_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_input_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_input_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
     add_executable(native_assets_menu_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_menu.cpp")
     target_link_libraries(native_assets_menu_test PRIVATE rt_native_assets)
@@ -204,6 +211,12 @@ if(RT_NATIVE_ASSETS_BUILD_TESTS)
     target_link_libraries(native_assets_daynight_test PRIVATE rt_native_assets)
     target_compile_features(native_assets_daynight_test PRIVATE cxx_std_20)
     target_compile_options(native_assets_daynight_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
+
+    add_executable(native_assets_daycycle_test
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_daycycle.cpp")
+    target_link_libraries(native_assets_daycycle_test PRIVATE rt_native_assets)
+    target_compile_features(native_assets_daycycle_test PRIVATE cxx_std_20)
+    target_compile_options(native_assets_daycycle_test PRIVATE ${RT_NATIVE_WARN_OPTIONS})
 
     add_executable(native_assets_game_loop_test
         "${CMAKE_CURRENT_SOURCE_DIR}/../../tests/native_assets/test_game_loop.cpp")
@@ -268,10 +281,12 @@ if(RT_NATIVE_ASSETS_COVERAGE)
             native_assets_edges_integration_test
             native_assets_audio_test
             native_assets_menu_test
+            native_assets_input_test
             native_assets_world_test
             native_assets_game_loop_test
             native_assets_engine_test
-            native_assets_daynight_test)
+            native_assets_daynight_test
+            native_assets_daycycle_test)
     endif()
     foreach(rt_native_cov_target IN LISTS RT_NATIVE_COVERAGE_TARGETS)
         target_compile_options(${rt_native_cov_target} PRIVATE ${RT_NATIVE_COVERAGE_FLAGS})

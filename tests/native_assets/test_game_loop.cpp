@@ -129,12 +129,36 @@ static void testDeterminism() {
     for (int i = 0; i < 60; ++i) CHECK(same(a.tick(1.f / 60.f, mi), b.tick(1.f / 60.f, mi)));
 }
 
+static void testPlayerInputDrivesCar() {
+    // Removing player input from the GameLoop, or applying it after integration,
+    // must make one of these observable car responses fail.
+    const MenuInput mi;
+    const CarInput gas{.steer = 0, .gas = true};
+    GameLoop forward;
+    const Vec2 start = forward.world().roadWaypoints[0];
+    const FrameSnapshot moving = forward.tickPlayer(1.f / 60.f, mi, gas);
+    CHECK(moving.speed > 0.f);
+    CHECK(lengthSq(moving.carPosition - start) > 0.f);
+
+    GameLoop turning;
+    const float initialHeading = turning.tickPlayer(1.f / 60.f, mi, {}).heading;
+    const FrameSnapshot turned = turning.tickPlayer(1.f / 60.f, mi, {.steer = 1, .gas = true});
+    CHECK(turned.heading > initialHeading);
+
+    GameLoop braking;
+    FrameSnapshot accelerated;
+    for (int i = 0; i < 10; ++i) accelerated = braking.tickPlayer(1.f / 60.f, mi, gas);
+    const FrameSnapshot slowed = braking.tickPlayer(1.f / 60.f, mi, {.brake = true});
+    CHECK(slowed.speed < accelerated.speed);
+}
+
 int main() {
     testResetAndFirstTick();
     testLapCorridorCamera();
     testCull();
     testLighting();
     testDeterminism();
+    testPlayerInputDrivesCar();
     if (g_fail) { std::fprintf(stderr, "%d failure(s)\n", g_fail); return 1; }
     std::puts("game_loop tests passed");
     return 0;

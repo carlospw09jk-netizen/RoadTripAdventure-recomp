@@ -47,6 +47,52 @@ float GameLoop::roadDistance(Vec2 p) const {
     return best;
 }
 
+void GameLoop::integrateCar(const CarInput& input) {
+    tickCar(car_, input, world_.surfaceMaterialAt(ai_.position.x, ai_.position.z));
+    const float sp = static_cast<float>(car_.speed);
+    const float steer = static_cast<float>(car_.steeringAngle) / static_cast<float>(kSteerLock);
+    ai_.heading = wrapAngle(ai_.heading + steer * (sp / params_.speedRef) * params_.turnRate);
+    ai_.position.x += std::sin(ai_.heading) * sp * params_.unitsPerSpeedTick;
+    ai_.position.z += std::cos(ai_.heading) * sp * params_.unitsPerSpeedTick;
+}
+
+FrameSnapshot GameLoop::makeSnapshot() {
+    ++frame_;
+    clock_ = advanceTimeOfDayCounter(clock_);
+    updateTimeOfDayLight(0.0f, clock_, lighting_);
+
+    // Camera and projection are in render space.
+    CarPose pose;
+    pose.position = {ai_.position.x * params_.renderScale, 0.f, ai_.position.z * params_.renderScale};
+    pose.heading = ai_.heading;
+    updateCamera(camera_, pose, static_cast<float>(car_.speed) * params_.cameraSpeedScale);
+    const Mat4 v = lookAtMatrix(camera_.eye, camera_.target);
+
+    FrameSnapshot s;
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c) s.view[c * 4 + r] = v.m[r * 4 + c];
+    const float t = 1.f / std::tan(params_.fovY * 0.5f);
+    s.proj[0] = t / params_.aspect;
+    s.proj[5] = -t;
+    s.proj[10] = params_.farZ / (params_.nearZ - params_.farZ);
+    s.proj[11] = -1.f;
+    s.proj[14] = params_.nearZ * params_.farZ / (params_.nearZ - params_.farZ);
+
+    s.carPosition = ai_.position;
+    s.heading = ai_.heading;
+    s.speed = static_cast<float>(car_.speed);
+    s.cameraEye = camera_.eye;
+    s.cameraTarget = camera_.target;
+    s.visibleCells = world_.visibleCells(s.carPosition, params_.viewDistance);
+    s.waypointIndex = ai_.waypointIndex;
+    s.lapCount = lapCount_;
+    s.waypointsPassed = waypointsPassed_;
+    s.frame = frame_;
+    s.clock = clock_;
+    s.lighting = lighting_;
+    return s;
+}
+
 FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
     AiParams aiParams;
     aiParams.arrivalRadius = params_.arrivalRadius;
@@ -69,48 +115,15 @@ FrameSnapshot GameLoop::tick(float /*dt*/, const MenuInput& /*menuInput*/) {
         in.gas = cmd.throttle;
         in.brake = cmd.brake;
         in.steer = cmd.steer;
-        tickCar(car_, in, world_.surfaceMaterialAt(ai_.position.x, ai_.position.z));
-        // (c) heading/position integration
-        const float sp = static_cast<float>(car_.speed);
-        const float steer = static_cast<float>(car_.steeringAngle) / static_cast<float>(kSteerLock);
-        ai_.heading = wrapAngle(ai_.heading + steer * (sp / params_.speedRef) * params_.turnRate);
-        ai_.position.x += std::sin(ai_.heading) * sp * params_.unitsPerSpeedTick;
-        ai_.position.z += std::cos(ai_.heading) * sp * params_.unitsPerSpeedTick;
+        integrateCar(in);  // (c) car physics, heading, and position integration
     }
-    ++frame_;
-    clock_ = advanceTimeOfDayCounter(clock_);
-    updateTimeOfDayLight(0.0f, clock_, lighting_);
+    return makeSnapshot();
+}
 
-    // (d) camera, in render space
-    CarPose pose;
-    pose.position = {ai_.position.x * params_.renderScale, 0.f, ai_.position.z * params_.renderScale};
-    pose.heading = ai_.heading;
-    updateCamera(camera_, pose, static_cast<float>(car_.speed) * params_.cameraSpeedScale);
-    const Mat4 v = lookAtMatrix(camera_.eye, camera_.target);
-
-    FrameSnapshot s;
-    for (int r = 0; r < 4; ++r)
-        for (int c = 0; c < 4; ++c) s.view[c * 4 + r] = v.m[r * 4 + c];
-    const float t = 1.f / std::tan(params_.fovY * 0.5f);
-    s.proj[0] = t / params_.aspect;
-    s.proj[5] = -t;
-    s.proj[10] = params_.farZ / (params_.nearZ - params_.farZ);
-    s.proj[11] = -1.f;
-    s.proj[14] = params_.nearZ * params_.farZ / (params_.nearZ - params_.farZ);
-
-    s.carPosition = ai_.position;
-    s.heading = ai_.heading;
-    s.speed = static_cast<float>(car_.speed);
-    s.cameraEye = camera_.eye;
-    s.cameraTarget = camera_.target;
-    s.visibleCells = world_.visibleCells(s.carPosition, params_.viewDistance);  // (e)
-    s.waypointIndex = ai_.waypointIndex;  // (f)
-    s.lapCount = lapCount_;
-    s.waypointsPassed = waypointsPassed_;
-    s.frame = frame_;
-    s.clock = clock_;
-    s.lighting = lighting_;
-    return s;
+FrameSnapshot GameLoop::tickPlayer(float /*dt*/, const MenuInput& /*menuInput*/, const CarInput& input) {
+    tasks_.tick();  // (a) task walker pass
+    for (int k = 0; k < params_.physicsTicksPerFrame; ++k) integrateCar(input);
+    return makeSnapshot();
 }
 
 }  // namespace rt::native::gameplay

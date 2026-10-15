@@ -78,6 +78,10 @@ public:
     // the menu/pause layer and does not steer the self-driving car.
     FrameSnapshot tick(float dt, const MenuInput& menuInput);
 
+    // One fixed-step simulation frame driven by host/controller input instead
+    // of the waypoint AI. Menu input remains reserved for a future pause layer.
+    FrameSnapshot tickPlayer(float dt, const MenuInput& menuInput, const CarInput& input);
+
     const World& world() const { return world_; }
     const GameLoopParams& params() const { return params_; }
     const TaskPool& tasks() const { return tasks_; }
@@ -98,6 +102,9 @@ private:
     std::uint32_t clock_ = 0;
     DayNightOutput lighting_;
     std::uint32_t pipelineTicks_ = 0;  // bumped by the spawned frame task
+
+    void integrateCar(const CarInput& input);
+    FrameSnapshot makeSnapshot();
 };
 
 }  // namespace rt::native::gameplay

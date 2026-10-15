@@ -3,6 +3,7 @@
 // contains no duplicate road/car/shader code.
 #include "assets/native_model.h"
 #include "gameplay/game_loop.h"
+#include "gameplay/input.h"
 #include "preview/preview.h"
 
 #include <SDL3/SDL.h>
@@ -235,17 +236,35 @@ int main() {
         if (!renderer) { std::cerr << "scene resize: " << error << "\n"; return false; }
         return true;
     };
-    auto car = demoCar(); rt::native::gameplay::GameLoop loop; bool running = true; int frames = 0;
+    auto car = demoCar(); rt::native::gameplay::GameLoop loop;
+    rt::native::gameplay::ControllerConfig controllerConfig;
+    bool playerDriven = true, running = true; int frames = 0;
     std::uint64_t simulationFrame = 0;
     auto previous = std::chrono::steady_clock::now();
     while (running && (!maxFrames || frames < maxFrames)) {
         SDL_Event event; bool resize = false;
         while (SDL_PollEvent(&event)) { if (event.type == SDL_EVENT_QUIT || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED || (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE)) running = false;
+            if (event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat && event.key.scancode == SDL_SCANCODE_TAB) playerDriven = !playerDriven;
             if (event.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) resize = true; }
         if (!running) break;
         if (resize && !recreateSwapchain()) break;
         const auto now = std::chrono::steady_clock::now(); const float dt = std::min(std::chrono::duration<float>(now - previous).count(), 0.1f); previous = now;
-        const auto snapshot = loop.tick(dt, {}); simulationFrame = snapshot.frame;
+        const bool* keys = SDL_GetKeyboardState(nullptr);
+        const auto held = [keys](SDL_Scancode key) { return keys && keys[key]; };
+        rt::native::gameplay::PadState pad;
+        rt::native::gameplay::AnalogAxes axes;
+        axes.stickX = (held(SDL_SCANCODE_RIGHT) || held(SDL_SCANCODE_D) ? 1.f : 0.f) -
+                      (held(SDL_SCANCODE_LEFT) || held(SDL_SCANCODE_A) ? 1.f : 0.f);
+        if (held(SDL_SCANCODE_UP) || held(SDL_SCANCODE_W))
+            rt::native::gameplay::setPressed(pad, controllerConfig.getButtonConfig(rt::native::gameplay::ControllerAction::ACCELERATE));
+        if (held(SDL_SCANCODE_DOWN) || held(SDL_SCANCODE_S))
+            rt::native::gameplay::setPressed(pad, controllerConfig.getButtonConfig(rt::native::gameplay::ControllerAction::BRAKE));
+        if (held(SDL_SCANCODE_SPACE))
+            rt::native::gameplay::setPressed(pad, controllerConfig.getButtonConfig(rt::native::gameplay::ControllerAction::REVERSE));
+        const auto input = rt::native::gameplay::playerCarInput(pad, axes, controllerConfig);
+        const auto snapshot = playerDriven ? loop.tickPlayer(dt, {}, input) : loop.tick(dt, {}); simulationFrame = snapshot.frame;
+        std::cout << "rt-app input mode=" << (playerDriven ? "player" : "ai") << " steer=" << input.steer
+                  << " gas=" << input.gas << " brake=" << input.brake << " reverse=" << input.reverse << "\n";
         if (!noRender && presenter.extent.width && presenter.extent.height) {
             bool retry = false;
             do {

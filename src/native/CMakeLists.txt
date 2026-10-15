@@ -116,6 +116,15 @@ if(Vulkan_FOUND)
     target_link_libraries(rt-asset-menu PRIVATE rt_native_assets Vulkan::Vulkan)
     target_compile_features(rt-asset-menu PRIVATE cxx_std_20)
     target_compile_options(rt-asset-menu PRIVATE ${RT_NATIVE_WARN_OPTIONS} -Wno-missing-field-initializers)
+
+    # First interactive host increment: the scene is authored by preview.cpp
+    # and copied to an SDL3 Vulkan swapchain for presentation.
+    if(SDL3_FOUND)
+        add_executable(rt-app app/main.cpp preview/preview.cpp)
+        target_link_libraries(rt-app PRIVATE rt_native_assets Vulkan::Vulkan SDL3::SDL3)
+        target_compile_features(rt-app PRIVATE cxx_std_20)
+        target_compile_options(rt-app PRIVATE ${RT_NATIVE_WARN_OPTIONS} -Wno-missing-field-initializers)
+    endif()
 endif()
 
 # ---------------------------------------------------------------- tests (not run)

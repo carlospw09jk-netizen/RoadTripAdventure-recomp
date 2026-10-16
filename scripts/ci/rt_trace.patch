@@ -11,10 +11,51 @@ index 2bfbec7..cfffca9 100644
      private:
          class Impl;
 diff --git a/ps2xIOP/src/emulator/core/iop_kernel.cpp b/ps2xIOP/src/emulator/core/iop_kernel.cpp
-index 35aacc1..9d779b0 100644
+index 35aacc1..f6ea18c 100644
 --- a/ps2xIOP/src/emulator/core/iop_kernel.cpp
 +++ b/ps2xIOP/src/emulator/core/iop_kernel.cpp
-@@ -730,7 +730,30 @@ namespace ps2x::iop::detail
+@@ -5,6 +5,8 @@
+ #include "../iop_emulator_const.h"
+ 
+ #include <algorithm>
++#include <cstdio>
++#include <cstdlib>
+ 
+ namespace ps2x::iop::detail
+ {
+@@ -37,6 +39,13 @@ namespace ps2x::iop::detail
+ 
+     bool IopKernel::dispatchThreadImport(uint16_t ordinal, IopCpuState &cpu, uint64_t currentCycle)
+     {
++        static const bool threadTrace = [] { const char *e = std::getenv("RT_IOP_THREAD_TRACE"); return e && *e == '1'; }();
++        if (threadTrace)
++        {
++            static uint32_t s_threadLogCount = 0u;
++            if (++s_threadLogCount < 4000u)
++                std::fprintf(stderr, "[iop-th] op=%u a0=0x%x a1=0x%x pc=0x%x\n", ordinal, cpu.gpr[4], cpu.gpr[5], cpu.pc);
++        }
+         const auto setV0 = [&](int32_t value)
+         {
+             cpu.gpr[2] = static_cast<uint32_t>(value);
+@@ -63,6 +72,8 @@ namespace ps2x::iop::detail
+             }
+             const int id = thread.id;
+             m_threads.emplace(id, std::move(thread));
++            if (threadTrace)
++                std::fprintf(stderr, "[iop-th] CreateThread id=%d entry=0x%x prio=0x%x\n", id, thread.entry, thread.priority);
+             setV0(id);
+             return true;
+         }
+@@ -85,6 +96,8 @@ namespace ps2x::iop::detail
+         case 7: // StartThreadArgs
+         {
+             const int id = static_cast<int>(cpu.gpr[4]);
++            if (threadTrace)
++                std::fprintf(stderr, "[iop-th] StartThread id=%d\n", id);
+             const auto it = m_threads.find(id);
+             if (it == m_threads.end())
+             {
+@@ -730,7 +743,30 @@ namespace ps2x::iop::detail
          cleanupDeadThreads();
      }
  

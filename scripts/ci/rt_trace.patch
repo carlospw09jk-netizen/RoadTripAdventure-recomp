@@ -83,8 +83,30 @@ index a68d245..220199d 100644
          SET_GPR_U32(&invocation.context, 31, 0u);
          queueInvocation(std::move(invocation));
      }
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
+index 6b57dcf..0781ab3 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
+@@ -544,7 +544,7 @@ namespace ps2_syscalls
+         const uint32_t heapBase = (heapBaseRaw + 0xFu) & ~0xFu;
+ 
+         // Silent Hill and other games often pass -1 (0xFFFFFFFF) to mean "rest of RAM".
+-        static constexpr uint32_t kDefaultGuestHeapEnd = 0x01F00000u;
++        static constexpr uint32_t kDefaultGuestHeapEnd = 0x01FF0000u;
+         uint32_t heapLimit = kDefaultGuestHeapEnd;
+ 
+         if (heapSize != 0u && heapSize != 0xFFFFFFFFu)
+@@ -584,7 +584,7 @@ namespace ps2_syscalls
+     {
+         (void)rdram;
+ 
+-        static constexpr uint32_t kDefaultGuestHeapEnd = 0x01F00000u;
++        static constexpr uint32_t kDefaultGuestHeapEnd = 0x01FF0000u;
+ 
+         const uint32_t ret = runtime
+                                  ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..5b81aac 100644
+index 791dc93..0d50f6e 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
 @@ -40,6 +40,243 @@ namespace ps2_stubs
@@ -331,6 +353,15 @@ index 791dc93..5b81aac 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
+@@ -98,7 +335,7 @@ namespace
+     constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
+     constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
+     constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
+-    constexpr uint32_t kGuestHeapHardLimit = 0x01F00000u;
++    constexpr uint32_t kGuestHeapHardLimit = 0x01FF0000u;
+ 
+     constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
+     constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
 @@ -1431,6 +1668,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {

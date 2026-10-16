@@ -5,7 +5,7 @@
 #   scripts/android/build_apk.sh            # build/android-dev, then the APK
 #   scripts/android/build_apk.sh --install  # and adb install -r
 #
-# The default (debug) build is the separate "Road Trip DEV" app, io.github.silentsudin.roadtrip.dev:
+# The default (debug) build is the separate "Warriors DEV" app, io.github.silentsudin.roadtrip.war:
 # all device testing uses it, so the installed release app (io.github.silentsudin.roadtrip) is never
 # touched. --release builds the release package and refuses --install.
 set -euo pipefail

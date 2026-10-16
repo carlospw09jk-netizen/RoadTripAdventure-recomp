@@ -31,6 +31,11 @@ jobs:
         run: python3 scripts/ci/patch_granite_nolock.py
       - name: Apply runtime execution-trace patch (diagnostic)
         run: git -C third_party/PS2Recomp apply "$GITHUB_WORKSPACE/scripts/ci/rt_trace.patch"
+      - name: Cache Android debug keystore (stable signature across builds)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
       - name: Cache the on-device compiler
         id: llvm
         uses: actions/cache@v4

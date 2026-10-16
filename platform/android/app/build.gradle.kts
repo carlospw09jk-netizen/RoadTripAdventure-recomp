@@ -35,10 +35,10 @@ android {
         }
     }
     buildTypes {
-        // Debug builds are a separate app (Road Trip DEV, io.github.silentsudin.roadtrip.dev): its own
-        // data, saves and signature, so testing never touches the installed release app.
+        // Debug builds are a separate app (Warriors DEV, io.github.silentsudin.roadtrip.war): its own
+        // data, saves and signature, so it coexists with the installed release app and Road Trip DEV.
         getByName("debug") {
-            applicationIdSuffix = ".dev"
+            applicationIdSuffix = ".war"
         }
         getByName("release") {
             isMinifyEnabled = false

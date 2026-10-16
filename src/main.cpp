@@ -361,7 +361,7 @@ namespace
         }
         case rt::RomCheck::UnknownBuild:
             if (rt::dialogs::message("Unrecognised version",
-                                     "This disc doesn't match Road Trip (USA) SLUS-20398 v1.02, the only version "
+                                     "This disc doesn't match The Warriors (USA) SLUS-21215, the only version "
                                      "this app supports. It will very likely not work.\n\n" +
                                          detail + "\n\nContinue anyway?",
                                      true))

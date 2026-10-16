@@ -13,20 +13,19 @@
 
 namespace rt
 {
-    // Identity of the supported build (SLUS-20398, v1.02). See config/rom.json.
-    inline constexpr const char *kBootElfName = "SLUS_203.98";
-    inline constexpr const char *kVolumeId = "ROADTRIP";
-    inline constexpr const char *kBootElfSha1 = "2431de1ec3edd0df4be37ba564658d70c4049089";
-    inline constexpr uint32_t kBootElfSize = 1280576;
+    // Identity of the supported build: The Warriors (USA), SLUS-21215 (NTSC, boot ELF entry
+    // 0x100008, CRC32 8C3970AE). The boot ELF SHA-1 is the gate that matters.
+    inline constexpr const char *kBootElfName = "SLUS_212.15";
+    inline constexpr const char *kVolumeId = "THEWARRIORS";
+    inline constexpr const char *kBootElfSha1 = "e9cb2cc49aa046b9e494313dce2f5038ed17b2f4";
+    inline constexpr uint32_t kBootElfSize = 4903976;
 
-    // The good dump (Redump disc 27678: SLUS-20398 v1.02, one Mode 2 track of 262,046 sectors, whose
-    // SHA-1 Redump lists as the .bin's below) in the forms players keep it, by SHA-1 of: the
-    // .bin; an .iso made from it (its 2048-byte sectors); the data of a CHD made from the .bin
-    // (`chdman createcd`: 2352 + 96 bytes of subcode per frame, padded to 4 frames), or from the
-    // .iso (`chdman createdvd`: the .iso's bytes).
-    inline constexpr const char *kImageSha1Bin = "236b902a72580f43a480f18d232723a8676b02e5";
-    inline constexpr const char *kImageSha1Iso = "62a9b61ff1f7c4f5f88dbbc22682615707687cef";
-    inline constexpr const char *kImageSha1ChdCd = "3db60fb071f32958817211a7d348e5aba827f2b1";
+    // The dump this fork supports, by SHA-1 of the form the player keeps it in: a cooked .iso
+    // (2048-byte sectors). Other forms (.bin/.chd) are not verified for this title: empty strings
+    // never match, so they fall into the "use it anyway" path while the boot ELF gate above stays.
+    inline constexpr const char *kImageSha1Bin = "";
+    inline constexpr const char *kImageSha1Iso = "3b68f15cc0c831597467b477ecd9c0944b08c17f";
+    inline constexpr const char *kImageSha1ChdCd = "";
 
     enum class ImageCheck
     {

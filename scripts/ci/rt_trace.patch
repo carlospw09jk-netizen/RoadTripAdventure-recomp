@@ -106,7 +106,7 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..e116851 100644
+index 791dc93..5fe2dc9 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
 @@ -40,6 +40,366 @@ namespace ps2_stubs
@@ -476,7 +476,7 @@ index 791dc93..e116851 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +458,10 @@ namespace
+@@ -98,7 +458,15 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -485,10 +485,15 @@ index 791dc93..e116851 100644
 +    // K12: minimum size for the stub scratch arena carved out of the free gap between the
 +    // game's static data and the game's own heap base. Below this the legacy seeding is used.
 +    constexpr uint32_t kGuestHeapMinScratchSpan = 0x00010000u;
++    // K13: kernel-space scratch slice for games whose heap base sits directly after their static
++    // data (no gap). The low 1 MiB is BIOS/kernel-owned on real hardware; device RAM dumps show
++    // the runtime's own low-memory stubs staying below 0x80000, so the slice starts above them.
++    constexpr uint32_t kGuestScratchLowBase = 0x00080000u;
++    constexpr uint32_t kGuestScratchLowEnd = 0x00100000u;
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1072,6 +1435,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
+@@ -1072,6 +1440,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                        m_cpuContext.pc,
                                        elfCrc32,
                                        elfCrc32Valid);
@@ -497,7 +502,7 @@ index 791dc93..e116851 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1796,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1801,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -519,7 +524,7 @@ index 791dc93..e116851 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1929,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1934,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -534,7 +539,7 @@ index 791dc93..e116851 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2275,41 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2280,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }
@@ -544,9 +549,13 @@ index 791dc93..e116851 100644
 +    // reported (game bookkeeping + EndOfHeap queries). The runtime's own guestMalloc() arena,
 +    // however, must stay OUT of that range: re-seeding it onto the game's heap base made the
 +    // first host-side stub allocation (e.g. the sceGsResetGraph GIF packet) land exactly on the
-+    // game's earliest allocations and silently clobber live structures. Seed the scratch arena
-+    // into the free gap between the game's static data (the post-ELF suggestion) and the game's
-+    // heap base instead; fall back to the legacy seeding only when that gap is unusable.
++    // game's earliest allocations and silently clobber live structures.
++    // K13: many games have NO gap between their static data and their heap base (The Warriors'
++    // loaded segment ends at 0x715B5C and its heap base is 0x715B60). The runtime plays the EE
++    // kernel, so its scratch arena can live in kernel space: the low 1 MiB is BIOS/kernel-owned
++    // on real hardware and never touched by the game (on-device RAM dumps show the runtime's own
++    // low-memory stubs staying below 0x80000, and the rest of [0x1000,0x100000) stays all-zero).
++    // Arena selection order: post-ELF gap, then the low kernel slice, then legacy seeding.
 +    const uint32_t scratchBase = alignGuestHeapValue(clampGuestHeapBase(m_guestHeapSuggestedBase), kGuestHeapDefaultAlignment);
      m_guestHeapSuggestedBase = normalizedBase;
 +
@@ -560,13 +569,32 @@ index 791dc93..e116851 100644
 +        return;
 +    }
 +
++    uint32_t arenaBase = 0u;
++    uint32_t arenaEnd = 0u;
 +    const bool scratchGapUsable = scratchBase != 0u && scratchBase < normalizedBase &&
 +                                  (normalizedBase - scratchBase) >= kGuestHeapMinScratchSpan;
 +    if (scratchGapUsable)
 +    {
++        arenaBase = scratchBase;
++        arenaEnd = normalizedBase;
++    }
++    else
++    {
++        const uint32_t lowSliceBase = alignGuestHeapValue(clampGuestHeapBase(kGuestScratchLowBase), kGuestHeapDefaultAlignment);
++        const uint32_t lowSliceEnd = std::min<uint32_t>(kGuestScratchLowEnd, normalizedBase);
++        if (lowSliceBase != 0u && lowSliceEnd > lowSliceBase &&
++            (lowSliceEnd - lowSliceBase) >= kGuestHeapMinScratchSpan)
++        {
++            arenaBase = lowSliceBase;
++            arenaEnd = lowSliceEnd;
++        }
++    }
++
++    if (arenaBase != 0u)
++    {
 +        m_guestHeapBlocks.clear();
-+        m_guestHeapBlocks.push_back({scratchBase, normalizedBase - scratchBase, true});
-+        m_guestHeapEnd = scratchBase;
++        m_guestHeapBlocks.push_back({arenaBase, arenaEnd - arenaBase, true});
++        m_guestHeapEnd = arenaBase;
 +        m_guestHeapBase = normalizedBase;
 +        m_guestHeapLimit = clampGuestHeapLimit(guestLimit);
 +        m_guestHeapConfigured = true;
@@ -610,10 +638,10 @@ index 40a68b1..a1ff354 100644
      std::cerr.flush();
 diff --git a/ps2xTest/src/ps2_runtime_guestheap_tests.cpp b/ps2xTest/src/ps2_runtime_guestheap_tests.cpp
 new file mode 100644
-index 0000000..208e8ff
+index 0000000..0582eb7
 --- /dev/null
 +++ b/ps2xTest/src/ps2_runtime_guestheap_tests.cpp
-@@ -0,0 +1,59 @@
+@@ -0,0 +1,76 @@
 +#include "MiniTest.h"
 +#include "ps2_runtime.h"
 +
@@ -670,6 +698,23 @@ index 0000000..208e8ff
 +            const uint32_t second = runtime.guestMalloc(64u, 16u);
 +            t.IsTrue(second != 0u, "guestMalloc after repeat configure must succeed");
 +            t.IsTrue(second != first, "repeat configure must not reuse a live allocation's address");
++        });
++
++        tc.Run("no-gap heap base falls back to the kernel-space scratch slice", [](TestCase &t)
++        {
++            // Geometry of a game whose heap base sits directly after its static data (no gap
++            // between the post-ELF suggestion and the reported base): the scratch arena must
++            // fall back to kernel space instead of landing on the game's heap.
++            PS2Runtime runtime;
++            runtime.configureGuestHeap(0x00100000u, kGameHeapLimit);
++
++            t.Equals(runtime.guestHeapBase(), 0x00100000u, "reported heap base must stay the game's");
++            t.Equals(runtime.guestHeapLimit(), kGameHeapLimit, "reported heap limit must stay the game's");
++
++            const uint32_t addr = runtime.guestMalloc(128u, 16u);
++            t.IsTrue(addr != 0u, "guestMalloc must succeed");
++            t.IsTrue(addr >= 0x00080000u && addr < 0x00100000u,
++                     "scratch allocation must land in the low kernel slice, not on the game's heap");
 +        });
 +    });
 +}

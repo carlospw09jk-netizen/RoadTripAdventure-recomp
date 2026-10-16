@@ -1,3 +1,19 @@
+diff --git a/ps2xRuntime/CMakeLists.txt b/ps2xRuntime/CMakeLists.txt
+index 162c3e0..e9cebb8 100644
+--- a/ps2xRuntime/CMakeLists.txt
++++ b/ps2xRuntime/CMakeLists.txt
+@@ -491,6 +491,11 @@ target_compile_definitions(ps2_runtime PRIVATE
+     PS2X_HAS_FFMPEG=$<BOOL:${PS2X_ENABLE_FFMPEG}>
+ )
+ 
++# Kernel debug console (kputs/Deci2 text) must be live in every build - release builds
++# otherwise compile the whole Deci2Call switch out, silently swallowing the game's printf
++# output and returning stale register values to the guest.
++target_compile_definitions(ps2_runtime PRIVATE RUNTIME_DECI2CALL=1)
++
+ file(GLOB_RECURSE KERNEL_SRC_FILES CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/lib/Kernel/*.cpp"
+ )
 diff --git a/ps2xRuntime/include/runtime/ee_scheduler.h b/ps2xRuntime/include/runtime/ee_scheduler.h
 index 9e9c3e0..45fc2b9 100644
 --- a/ps2xRuntime/include/runtime/ee_scheduler.h

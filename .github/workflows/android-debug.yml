@@ -29,6 +29,8 @@ jobs:
         run: python3 scripts/pipeline.py bootstrap
       - name: Patch Granite legacy semaphore self-deadlock
         run: python3 scripts/ci/patch_granite_nolock.py
+      - name: Apply runtime execution-trace patch (diagnostic)
+        run: git -C third_party/PS2Recomp apply "$GITHUB_WORKSPACE/scripts/ci/rt_trace.patch"
       - name: Cache the on-device compiler
         id: llvm
         uses: actions/cache@v4

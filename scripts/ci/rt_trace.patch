@@ -1,5 +1,5 @@
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..d4cc18e 100644
+index a68d245..e109b08 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 @@ -14,6 +14,13 @@
@@ -10,7 +10,7 @@ index a68d245..d4cc18e 100644
 +// purpose: no header changes, they are diagnostic-only).
 +extern "C" void rt_trace_dump();
 +extern "C" int rt_trace_active();
-+extern "C" void rt_trace_push_pc(const R5900Context *ctx);
++extern "C" void rt_trace_push_pc(uint8_t *rdram, const R5900Context *ctx);
 +extern "C" void rt_trace_death(uint8_t *rdram, const R5900Context *ctx);
 +
  namespace
@@ -29,7 +29,7 @@ index a68d245..d4cc18e 100644
              continue;
          }
  
-+        rt_trace_push_pc(&context);
++        rt_trace_push_pc(m_rdram, &context);
 +
          try
          {
@@ -43,10 +43,10 @@ index a68d245..d4cc18e 100644
  }
  
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..6ba7d78 100644
+index 791dc93..e33a1f2 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,194 @@ namespace ps2_stubs
+@@ -40,6 +40,239 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -134,6 +134,50 @@ index 791dc93..6ba7d78 100644
 +        g_syscalls[static_cast<uint64_t>(slot) % kSysCap].v0 = reg(ctx, 2);
 +    }
 +
++    struct WatchSlot
++    {
++        uint32_t addr;
++        uint32_t last;
++        bool init;
++    };
++    static WatchSlot g_watch[8] = {
++        {0x1FFFF40u, 0, false}, {0x1FFFF00u, 0, false}, {0x1FFFF30u, 0, false}, {0x1FFFF20u, 0, false},
++        {0x1FFFF10u, 0, false}, {0x1FFFFB0u, 0, false}, {0x1FFFF80u, 0, false}, {0x1FFFFC0u, 0, false},
++    };
++
++    static uint32_t rd32(uint8_t *rdram, uint32_t addr)
++    {
++        uint32_t v = 0;
++        if (rdram && addr <= 0x02000000u - 4u)
++            std::memcpy(&v, rdram + addr, 4);
++        return v;
++    }
++
++    static void checkWatches(uint8_t *rdram, const R5900Context *ctx, uint64_t pcIndex)
++    {
++        if (!enabled() || !rdram)
++            return;
++        for (auto &w : g_watch)
++        {
++            const uint32_t now = rd32(rdram, w.addr);
++            if (!w.init)
++            {
++                w.last = now;
++                w.init = true;
++                continue;
++            }
++            if (now != w.last)
++            {
++                std::ostringstream oss;
++                oss << "[trace:watch] #" << pcIndex << " pc=0x" << std::hex << ctx->pc << " addr=0x" << w.addr
++                    << " old=0x" << w.last << " new=0x" << now << " ra=0x" << reg(ctx, 31) << " sp=0x" << reg(ctx, 29)
++                    << std::dec << "\n";
++                writeTraceText(oss.str());
++                w.last = now;
++            }
++        }
++    }
++
 +    static void writeTraceText(const std::string &text)
 +    {
 +        std::cerr << text << std::flush;
@@ -146,7 +190,7 @@ index 791dc93..6ba7d78 100644
 +        }
 +    }
 +
-+    static void pushPc(const R5900Context *ctx)
++    static void pushPc(uint8_t *rdram, const R5900Context *ctx)
 +    {
 +        if (!enabled())
 +            return;
@@ -155,6 +199,7 @@ index 791dc93..6ba7d78 100644
 +        e.pc = ctx->pc;
 +        e.ra = reg(ctx, 31);
 +        e.sp = reg(ctx, 29);
++        checkWatches(rdram, ctx, i);
 +    }
 +
 +    static void deathNote(uint8_t *rdram, const R5900Context *ctx)
@@ -227,9 +272,9 @@ index 791dc93..6ba7d78 100644
 +    return rt_trace::enabled() ? 1 : 0;
 +}
 +
-+extern "C" void rt_trace_push_pc(const R5900Context *ctx)
++extern "C" void rt_trace_push_pc(uint8_t *rdram, const R5900Context *ctx)
 +{
-+    rt_trace::pushPc(ctx);
++    rt_trace::pushPc(rdram, ctx);
 +}
 +
 +extern "C" void rt_trace_death(uint8_t *rdram, const R5900Context *ctx)
@@ -241,15 +286,28 @@ index 791dc93..6ba7d78 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -1431,6 +1619,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1664,20 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
 +    rt_trace::pushBranch(static_cast<uint32_t>(kind), sourcePc, targetPc, ctx);
++    if (rt_trace::enabled() &&
++        (targetPc == 0x229550u || targetPc == 0x2294C8u || targetPc == 0x2294ACu || targetPc == 0u))
++    {
++        const uint32_t sp = static_cast<uint32_t>(ctx->gpr[29]);
++        const uint32_t slot = rt_trace::rd32(rdram, sp);
++        const uint32_t slot2 = rt_trace::rd32(rdram, sp + 0x10u);
++        const uint32_t slot3 = rt_trace::rd32(rdram, 0x1FFFF40u);
++        std::ostringstream oss;
++        oss << "[trace:call] to=0x" << std::hex << targetPc << " from=0x" << sourcePc << " kind=" << std::dec
++            << static_cast<int>(kind) << " ra=0x" << std::hex << static_cast<uint32_t>(ctx->gpr[31]) << " sp=0x" << sp
++            << " [sp]=0x" << slot << " [sp+0x10]=0x" << slot2 << " [1FFFF40]=0x" << slot3 << std::dec << "\n";
++        rt_trace::writeTraceText(oss.str());
++    }
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1738,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1796,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  

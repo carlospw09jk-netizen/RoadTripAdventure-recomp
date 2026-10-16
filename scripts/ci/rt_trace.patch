@@ -1,8 +1,19 @@
 diff --git a/ps2xRuntime/include/runtime/ee_scheduler.h b/ps2xRuntime/include/runtime/ee_scheduler.h
-index 9e9c3e0..a770fa3 100644
+index 9e9c3e0..45fc2b9 100644
 --- a/ps2xRuntime/include/runtime/ee_scheduler.h
 +++ b/ps2xRuntime/include/runtime/ee_scheduler.h
-@@ -450,6 +450,7 @@ public:
+@@ -185,6 +185,10 @@ struct GuestThread
+     EeWaitState wait{};
+     EeResumeContinuation resumeCompletion;
+     std::vector<GuestInvocation> invocations;
++    // K17: last few dispatched pcs per thread (diagnostics only) - shows how a thread
++    // approached its retirement so an early exit can be explained post-mortem.
++    uint32_t rtRecentPc[8] = {};
++    uint32_t rtRecentPcCount = 0;
+ 
+     [[nodiscard]] R5900Context &activeContext()
+     {
+@@ -450,6 +454,7 @@ public:
  
      [[nodiscard]] EeKernelSnapshot snapshot() const;
      void publishSnapshot();
@@ -11,7 +22,7 @@ index 9e9c3e0..a770fa3 100644
      // Whether a save state could be taken now (only meaningful at the top of run()). With
      // `hostState`, also checks the GIF/GS path (waits for the GIF/VIF1 worker first), the memory
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..9507856 100644
+index a68d245..27aa26c 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 @@ -13,6 +13,15 @@
@@ -30,7 +41,32 @@ index a68d245..9507856 100644
  
  namespace
  {
-@@ -283,6 +292,9 @@ void EeScheduler::run()
+@@ -278,11 +287,34 @@ void EeScheduler::run()
+                 }
+                 continue;
+             }
++            {
++                char exitLine[512];
++                std::snprintf(exitLine,
++                              sizeof(exitLine),
++                              "==== EXIT ====\nt#%d entry=0x%08x ra=0x%08x sp=0x%08x recent=%08x,%08x,%08x,%08x,%08x,%08x,%08x,%08x count=%u\n",
++                              running->id,
++                              running->entry,
++                              static_cast<uint32_t>(getRegU32(&running->activeContext(), 31)),
++                              static_cast<uint32_t>(getRegU32(&running->activeContext(), 29)),
++                              running->rtRecentPc[0],
++                              running->rtRecentPc[1],
++                              running->rtRecentPc[2],
++                              running->rtRecentPc[3],
++                              running->rtRecentPc[4],
++                              running->rtRecentPc[5],
++                              running->rtRecentPc[6],
++                              running->rtRecentPc[7],
++                              running->rtRecentPcCount);
++                rt_trace_emit(exitLine);
++            }
+             makeDormant(*running);
+             m_currentThreadId = 0;
              copyMainContextToRuntime();
              publishIdleDebugContext();
              publishSnapshot();
@@ -40,16 +76,21 @@ index a68d245..9507856 100644
              continue;
          }
  
-@@ -324,6 +336,8 @@ void EeScheduler::run()
+@@ -324,6 +356,13 @@ void EeScheduler::run()
              continue;
          }
  
 +        rt_trace_push_pc(m_rdram, &context);
++        if (rt_trace_active())
++        {
++            running->rtRecentPc[running->rtRecentPcCount & 7u] = static_cast<uint32_t>(context.pc);
++            ++running->rtRecentPcCount;
++        }
 +
          try
          {
              m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
-@@ -562,6 +576,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+@@ -562,6 +601,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
          m_runtime.guestFree(ownedStack);
      }
      publishSnapshot();
@@ -58,7 +99,7 @@ index a68d245..9507856 100644
      throw EeDispatcherTransfer{};
  }
  
-@@ -943,6 +959,92 @@ int EeScheduler::pollSemaphore(int id)
+@@ -943,6 +984,92 @@ int EeScheduler::pollSemaphore(int id)
      return id;
  }
  
@@ -151,7 +192,7 @@ index a68d245..9507856 100644
  void EeScheduler::waitSemaphore(int id)
  {
      assertExecutor();
-@@ -1291,6 +1393,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
+@@ -1291,6 +1418,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
  void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
  {
      assertExecutor();
@@ -165,7 +206,7 @@ index a68d245..9507856 100644
      const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
      if (cause < 32u && (mask & (1u << cause)) == 0u)
      {
-@@ -1317,7 +1426,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
+@@ -1317,7 +1451,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
          SET_GPR_U32(&invocation.context, 4, cause);
          SET_GPR_U32(&invocation.context, 5, handler.argument);
          SET_GPR_U32(&invocation.context, 28, handler.gp);
@@ -229,6 +270,43 @@ index e5f9a1a..35e72d4 100644
          setReturnS32(ctx, 0);
      }
  
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/Deci2.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/Deci2.cpp
+index 039da2f..9ff556f 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/Deci2.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/Deci2.cpp
+@@ -17,6 +17,7 @@ namespace
+     std::unordered_map<int32_t, Deci2Session> g_deci2Sessions;
+     int32_t g_nextDeci2Socket = 1;
+     std::atomic<uint32_t> g_deci2LogCount{0};
++    extern "C" void rt_trace_emit(const char *text);
+ 
+     static bool readDeci2U32(uint8_t *rdram, uint32_t guestAddr, uint32_t &value)
+     {
+@@ -64,7 +65,7 @@ namespace
+ 
+     static void logDeci2Text(const char *prefix, const std::string &text)
+     {
+-        constexpr uint32_t kMaxDeci2TextLogs = 256u;
++        constexpr uint32_t kMaxDeci2TextLogs = 4096u;
+         const uint32_t logIndex = g_deci2LogCount.fetch_add(1u, std::memory_order_relaxed);
+         if (logIndex >= kMaxDeci2TextLogs)
+         {
+@@ -72,6 +73,15 @@ namespace
+         }
+ 
+         const std::string safeText = sanitizeDeci2Text(text);
++        {
++            std::string traceLine = "[deci2] ";
++            traceLine += safeText;
++            if (traceLine.back() != '\n')
++            {
++                traceLine += '\n';
++            }
++            rt_trace_emit(traceLine.c_str());
++        }
+         std::cerr << prefix << safeText;
+         if (safeText.empty() || safeText.back() != '\n')
+         {
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
 index 6b57dcf..0781ab3 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp

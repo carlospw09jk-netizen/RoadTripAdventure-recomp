@@ -1,3 +1,125 @@
+diff --git a/ps2xIOP/include/ps2x/iop/iop_subsystem.h b/ps2xIOP/include/ps2x/iop/iop_subsystem.h
+index 2bfbec7..cfffca9 100644
+--- a/ps2xIOP/include/ps2x/iop/iop_subsystem.h
++++ b/ps2xIOP/include/ps2x/iop/iop_subsystem.h
+@@ -53,6 +53,7 @@ namespace ps2x::iop
+         [[nodiscard]] bool isMemoryRange(uint32_t address, size_t size) const;
+ 
+         [[nodiscard]] DebugSnapshot debugSnapshot() const;
++        [[nodiscard]] std::string debugThreadDump() const;
+ 
+     private:
+         class Impl;
+diff --git a/ps2xIOP/src/emulator/core/iop_kernel.cpp b/ps2xIOP/src/emulator/core/iop_kernel.cpp
+index 35aacc1..9d779b0 100644
+--- a/ps2xIOP/src/emulator/core/iop_kernel.cpp
++++ b/ps2xIOP/src/emulator/core/iop_kernel.cpp
+@@ -730,7 +730,30 @@ namespace ps2x::iop::detail
+         cleanupDeadThreads();
+     }
+ 
+-    void IopKernel::cleanupDeadThreads()
++    void IopKernel::appendThreadDebugDump(std::string &out) const
++{
++    static const char *kStateNames[] = {"Dormant", "Ready", "Running", "Sleep", "Delay", "Sema", "Evf", "Susp", "Dead"};
++    char line[256];
++    for (const auto &entry : m_threads)
++    {
++        const IopThread &t = entry.second;
++        const char *state = kStateNames[static_cast<size_t>(t.state)];
++        std::snprintf(line,
++                      sizeof(line),
++                      "iop-t#%d state=%s pc=0x%08x ra=0x%08x sp=0x%08x entry=0x%08x prio=0x%x waitId=%d\n",
++                      t.id,
++                      state,
++                      t.cpu.pc,
++                      t.cpu.gpr[31],
++                      t.cpu.gpr[29],
++                      t.entry,
++                      t.priority,
++                      t.waitId);
++        out += line;
++    }
++}
++
++void IopKernel::cleanupDeadThreads()
+     {
+         for (auto thread = m_threads.begin(); thread != m_threads.end();)
+         {
+diff --git a/ps2xIOP/src/emulator/core/iop_kernel.h b/ps2xIOP/src/emulator/core/iop_kernel.h
+index 1f5ad28..6c304b6 100644
+--- a/ps2xIOP/src/emulator/core/iop_kernel.h
++++ b/ps2xIOP/src/emulator/core/iop_kernel.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <string>
++
+ #include <functional>
+ 
+ #include "iop_cpu.h"
+@@ -77,6 +79,9 @@ namespace ps2x::iop::detail
+ 
+         [[nodiscard]] size_t threadCount() const noexcept { return m_threads.size(); }
+ 
++        // K26 diagnostics: per-thread state/pc dump for the runtime trace.
++        void appendThreadDebugDump(std::string &out) const;
++
+         // Called when WaitEventFlag/WaitSema must block but no IOP thread is current (an RPC server
+         // running synchronously on a temporary context): advance to the next pending event (DMA
+         // completion) and service it. Returns false when nothing is pending.
+diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
+index 2a45330..a1dfeca 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.cpp
++++ b/ps2xIOP/src/emulator/iop_emulator.cpp
+@@ -1116,6 +1116,11 @@ namespace ps2x::iop::detail
+         return static_cast<uint32_t>(m_impl->kernel.threadCount());
+     }
+ 
++    void IopEmulator::appendThreadDebugDump(std::string &out) const
++    {
++        m_impl->kernel.appendThreadDebugDump(out);
++    }
++
+     uint32_t IopEmulator::rpcServerCount() const noexcept
+     {
+         return static_cast<uint32_t>(m_impl->rpc.serverCount());
+diff --git a/ps2xIOP/src/emulator/iop_emulator.h b/ps2xIOP/src/emulator/iop_emulator.h
+index 688400e..80dd83b 100644
+--- a/ps2xIOP/src/emulator/iop_emulator.h
++++ b/ps2xIOP/src/emulator/iop_emulator.h
+@@ -49,6 +49,7 @@ namespace ps2x::iop::detail
+         [[nodiscard]] uint64_t instructions() const noexcept;
+         [[nodiscard]] uint32_t loadedModuleCount() const noexcept;
+         [[nodiscard]] uint32_t threadCount() const noexcept;
++        void appendThreadDebugDump(std::string &out) const;
+         [[nodiscard]] uint32_t rpcServerCount() const noexcept;
+ 
+     private:
+diff --git a/ps2xIOP/src/iop_subsystem.cpp b/ps2xIOP/src/iop_subsystem.cpp
+index 0a56599..aee7270 100644
+--- a/ps2xIOP/src/iop_subsystem.cpp
++++ b/ps2xIOP/src/iop_subsystem.cpp
+@@ -270,6 +270,19 @@ namespace ps2x::iop
+         return m_impl->emulator.isMemoryRange(address, size);
+     }
+ 
++std::string IopSubsystem::debugThreadDump() const
++{
++    std::string out;
++    m_impl->emulator.appendThreadDebugDump(out);
++    for (const auto &note : m_impl->loadOutcomes)
++    {
++        out += "iop-load: ";
++        out += note;
++        out += "\n";
++    }
++    return out;
++}
++
+     DebugSnapshot IopSubsystem::debugSnapshot() const
+     {
+         DebugSnapshot snapshot;
 diff --git a/ps2xRuntime/CMakeLists.txt b/ps2xRuntime/CMakeLists.txt
 index 162c3e0..e9cebb8 100644
 --- a/ps2xRuntime/CMakeLists.txt
@@ -38,19 +160,21 @@ index 9e9c3e0..45fc2b9 100644
      // Whether a save state could be taken now (only meaningful at the top of run()). With
      // `hostState`, also checks the GIF/GS path (waits for the GIF/VIF1 worker first), the memory
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..f50c5b5 100644
+index a68d245..5ca5f5f 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-@@ -3,6 +3,8 @@
+@@ -3,6 +3,10 @@
  #include "runtime/ps2_test_harness.h"
  #include "runtime/ps2_save_state.h"
  
++#include "ps2x/iop/iop_subsystem.h"
++
 +extern "C" size_t rtTraceRpcDesc(char *out, size_t cap, size_t limit);
 +
  #include "ps2_log.h"
  #include "ps2_runtime_macros.h"
  
-@@ -13,6 +15,15 @@
+@@ -13,6 +17,15 @@
  #include <cstring>
  #include <limits>
  #include <stdexcept>
@@ -66,7 +190,7 @@ index a68d245..f50c5b5 100644
  
  namespace
  {
-@@ -278,11 +289,34 @@ void EeScheduler::run()
+@@ -278,11 +291,34 @@ void EeScheduler::run()
                  }
                  continue;
              }
@@ -101,7 +225,7 @@ index a68d245..f50c5b5 100644
              continue;
          }
  
-@@ -324,6 +358,13 @@ void EeScheduler::run()
+@@ -324,6 +360,13 @@ void EeScheduler::run()
              continue;
          }
  
@@ -115,7 +239,7 @@ index a68d245..f50c5b5 100644
          try
          {
              m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
-@@ -562,6 +603,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+@@ -562,6 +605,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
          m_runtime.guestFree(ownedStack);
      }
      publishSnapshot();
@@ -124,7 +248,7 @@ index a68d245..f50c5b5 100644
      throw EeDispatcherTransfer{};
  }
  
-@@ -943,6 +986,132 @@ int EeScheduler::pollSemaphore(int id)
+@@ -943,6 +988,147 @@ int EeScheduler::pollSemaphore(int id)
      return id;
  }
  
@@ -215,6 +339,21 @@ index a68d245..f50c5b5 100644
 +                      rd(0x50C55Cu));
 +        out += line;
 +    }
++    out += "==== iop ====\n";
++    if (auto *iop = m_runtime.iopSubsystem())
++    {
++        const ps2x::iop::DebugSnapshot snap = iop->debugSnapshot();
++        std::snprintf(line,
++                      sizeof(line),
++                      "iop cycles=%llu insns=%llu modules=%u threads=%u servers=%u\n",
++                      static_cast<unsigned long long>(snap.emulatorCycles),
++                      static_cast<unsigned long long>(snap.emulatorInstructions),
++                      snap.emulatorLoadedModules,
++                      snap.emulatorThreads,
++                      snap.emulatorRpcServers);
++        out += line;
++        out += iop->debugThreadDump();
++    }
 +    out += "==== rpc ring (last 40) ====\n";
 +    {
 +        char rpcBuf[8192];
@@ -257,7 +396,7 @@ index a68d245..f50c5b5 100644
  void EeScheduler::waitSemaphore(int id)
  {
      assertExecutor();
-@@ -1291,6 +1460,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
+@@ -1291,6 +1477,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
  void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
  {
      assertExecutor();
@@ -271,7 +410,7 @@ index a68d245..f50c5b5 100644
      const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
      if (cause < 32u && (mask & (1u << cause)) == 0u)
      {
-@@ -1317,7 +1493,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
+@@ -1317,7 +1510,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
          SET_GPR_U32(&invocation.context, 4, cause);
          SET_GPR_U32(&invocation.context, 5, handler.argument);
          SET_GPR_U32(&invocation.context, 28, handler.gp);

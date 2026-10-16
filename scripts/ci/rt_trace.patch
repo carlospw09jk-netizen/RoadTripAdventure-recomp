@@ -373,10 +373,10 @@ index 039da2f..9ff556f 100644
          if (safeText.empty() || safeText.back() != '\n')
          {
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-index 464a624..46d6215 100644
+index 464a624..0582639 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-@@ -1058,3 +1058,66 @@ namespace ps2_syscalls
+@@ -1058,3 +1058,70 @@ namespace ps2_syscalls
          ar & g_osd_config2_raw;
      }
  }
@@ -411,10 +411,17 @@ index 464a624..46d6215 100644
 +        {
 +            continue;
 +        }
-+        char line[320];
++        char line[640];
++        char sendHex[40];
++        char recvHex[40];
++        for (size_t b = 0; b < 16u; b += 4u)
++        {
++            std::snprintf(sendHex + b * 2u, 9u, "%02x%02x%02x%02x", e.sendPreview[b], e.sendPreview[b + 1u], e.sendPreview[b + 2u], e.sendPreview[b + 3u]);
++            std::snprintf(recvHex + b * 2u, 9u, "%02x%02x%02x%02x", e.recvPreview[b], e.recvPreview[b + 1u], e.recvPreview[b + 2u], e.recvPreview[b + 3u]);
++        }
 +        const int n = std::snprintf(line,
 +                                    sizeof(line),
-+                                    "rpc#%llu %s sid=0x%08x fn=0x%x fl=0x%x res=%d pc=0x%08x ra=0x%08x snd=%u rcv=%u prev=%02x%02x%02x%02x\n",
++                                    "rpc#%llu %s sid=0x%08x fn=0x%x fl=0x%x res=%d pc=0x%08x snd=%u rcv=%u sp=[%s] rp=[%s]\n",
 +                                    static_cast<unsigned long long>(e.seq),
 +                                    e.op != nullptr ? e.op : "?",
 +                                    e.sid,
@@ -422,13 +429,10 @@ index 464a624..46d6215 100644
 +                                    e.flags,
 +                                    e.result,
 +                                    e.pc,
-+                                    e.ra,
 +                                    e.sendSize,
 +                                    e.recvSize,
-+                                    e.sendPreview[0],
-+                                    e.sendPreview[1],
-+                                    e.sendPreview[2],
-+                                    e.sendPreview[3]);
++                                    sendHex,
++                                    recvHex);
 +        if (n <= 0)
 +        {
 +            continue;

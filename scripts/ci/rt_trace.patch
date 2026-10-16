@@ -493,10 +493,10 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..b2b40d7 100644
+index 791dc93..44a439e 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,378 @@ namespace ps2_stubs
+@@ -40,6 +40,377 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -702,12 +702,11 @@ index 791dc93..b2b40d7 100644
 +    static WatchSlot g_watch[34] = {
 +        {0x1FFFF40u, 0, false}, {0x1FFFF44u, 0, false}, {0x1FFFF3Cu, 0, false}, {0x1FFFF00u, 0, false},
 +        {0x1FFFF30u, 0, false}, {0x1FFFF50u, 0, false}, {0x1FFFF70u, 0, false}, {0x1FFFFB0u, 0, false},
-+        {0x760C00u, 0, false}, {0x760C10u, 0, false}, {0x760C20u, 0, false}, {0x760C30u, 0, false},
-+        {0x760C40u, 0, false}, {0x760C50u, 0, false}, {0x760C60u, 0, false}, {0x6EB9D0u, 0, false},
-+        {0x6EB970u, 0, false}, {0x715C98u, 0, false},
-+        {0x715B60u, 0, false}, {0x715B70u, 0, false}, {0x715B74u, 0, false}, {0x715B78u, 0, false},
-+        {0x715B80u, 0, false}, {0x715B90u, 0, false}, {0x715BF0u, 0, false}, {0x6EB978u, 0, false},
-+        {0x6EB97Cu, 0, false}, {0x6EB960u, 0, false},
++        {0x5D84D4u, 0, false}, {0x50AA84u, 0, false}, {0x50C53Cu, 0, false}, {0x50C544u, 0, false},
++        {0x50C550u, 0, false}, {0x50C554u, 0, false}, {0x50C558u, 0, false}, {0x50C55Cu, 0, false},
++        {0x50C500u, 0, false}, {0x50C504u, 0, false}, {0x50C508u, 0, false}, {0x50C510u, 0, false},
++        {0x50C514u, 0, false}, {0x50C518u, 0, false}, {0x50C51Cu, 0, false}, {0x50C520u, 0, false},
++        {0x50C528u, 0, false}, {0x50C52Cu, 0, false}, {0x50C530u, 0, false}, {0x50C534u, 0, false},
 +        {0x50BD30u, 0, false}, {0x50BD34u, 0, false}, {0x50C540u, 0, false}, {0x50C548u, 0, false},
 +        {0x50C54Cu, 0, false}, {0x50C50Cu, 0, false},
 +    };
@@ -875,7 +874,7 @@ index 791dc93..b2b40d7 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +470,15 @@ namespace
+@@ -98,7 +469,15 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -892,7 +891,7 @@ index 791dc93..b2b40d7 100644
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1072,6 +1452,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
+@@ -1072,6 +1451,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                        m_cpuContext.pc,
                                        elfCrc32,
                                        elfCrc32Valid);
@@ -901,7 +900,7 @@ index 791dc93..b2b40d7 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1813,25 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1812,25 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -927,7 +926,7 @@ index 791dc93..b2b40d7 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1950,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1949,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -942,7 +941,7 @@ index 791dc93..b2b40d7 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2296,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2295,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }

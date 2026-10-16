@@ -493,7 +493,7 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..ce51413 100644
+index 791dc93..0df7174 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
 @@ -40,6 +40,378 @@ namespace ps2_stubs
@@ -901,7 +901,7 @@ index 791dc93..ce51413 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1813,23 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1813,24 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -910,6 +910,7 @@ index 791dc93..ce51413 100644
 +        (targetPc == 0x229550u || targetPc == 0x2294C8u || targetPc == 0x2294ACu || targetPc == 0u ||
 +         targetPc == 0x4AB438u || targetPc == 0x4AB560u || targetPc == 0x4AB258u || targetPc == 0x4AB498u ||
 +         targetPc == 0x440110u || targetPc == 0x440758u || targetPc == 0x151C70u || targetPc == 0x43F870u ||
++         targetPc == 0x35E418u || targetPc == 0x35E598u || targetPc == 0x35FC80u || targetPc == 0x32FE90u ||
 +         (kind == GuestBranchKind::IndirectCall && sourcePc == 0x42AFFCu)))
 +    {
 +        const uint32_t sp = rt_trace::reg(ctx, 29);
@@ -925,7 +926,7 @@ index 791dc93..ce51413 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1948,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1949,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -940,7 +941,7 @@ index 791dc93..ce51413 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2294,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2295,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }

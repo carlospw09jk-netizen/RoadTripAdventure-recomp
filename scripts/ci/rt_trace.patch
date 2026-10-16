@@ -83,6 +83,44 @@ index a68d245..220199d 100644
          SET_GPR_U32(&invocation.context, 31, 0u);
          queueInvocation(std::move(invocation));
      }
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+index d5d05df..8e1787a 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/Helpers/Support.h
+@@ -1,5 +1,6 @@
+ #include <algorithm>
+ #include <cctype>
++#include "ps2x/state_archive.h"
+ 
+ namespace
+ {
+diff --git a/ps2xRuntime/src/lib/Kernel/Stubs/SIF.cpp b/ps2xRuntime/src/lib/Kernel/Stubs/SIF.cpp
+index e5f9a1a..35e72d4 100644
+--- a/ps2xRuntime/src/lib/Kernel/Stubs/SIF.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Stubs/SIF.cpp
+@@ -595,6 +595,22 @@ namespace ps2_stubs
+ 
+     void sceSifRpcLoop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+     {
++        // Real hardware: the EE-side RPC server loop never returns — it waits for requests sent
++        // by the IOP side and dispatches each one to the service callback registered through
++        // sceSifRegisterRpc. Returning here retires the server thread and deadlocks every client
++        // waiting on its services (The Warriors: the sound server thread retired instantly,
++        // leaving the main thread spinning on sound-init forever). Park the thread on an
++        // external wait so it stays alive; a request feeder can wake it via
++        // completeExternalWait(kSifRpcServerWaitType, token, ...) once the IOP transport posts
++        // requests.
++        constexpr uint32_t kSifRpcServerWaitType = 2u;
++        if (runtime != nullptr)
++        {
++            const uint32_t clientData = getRegU32(ctx, 4);
++            EeScheduler &ee = runtime->eeScheduler();
++            ee.bindMainContextForSyscall(*ctx, rdram);
++            ee.waitExternal(EeWaitReason::External, kSifRpcServerWaitType, clientData, {});
++        }
+         setReturnS32(ctx, 0);
+     }
+ 
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
 index 6b57dcf..0781ab3 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
@@ -721,3 +759,20 @@ index 0000000..0582eb7
 +        });
 +    });
 +}
+diff --git a/ps2xTest/src/ps2_runtime_kernel_tests.cpp b/ps2xTest/src/ps2_runtime_kernel_tests.cpp
+index 63b12d9..9c56e3c 100644
+--- a/ps2xTest/src/ps2_runtime_kernel_tests.cpp
++++ b/ps2xTest/src/ps2_runtime_kernel_tests.cpp
+@@ -919,7 +919,11 @@ void register_ps2_runtime_kernel_tests()
+ 
+             env.runtime.guestFree(grown);
+             const uint32_t reused = env.runtime.guestMalloc(0x80u, 16u);
+-            t.Equals(reused, heapBase, "guestFree should make the head block reusable");
++            // The stub scratch arena is decoupled from the reported heap window: with no usable
++            // gap in this configuration the arena is seeded elsewhere, so head-block reuse must
++            // land on the arena head, not on the reported SetupHeap base.
++            const uint32_t arenaHead = alignedAlloc;
++            t.Equals(reused, arenaHead, "guestFree should make the arena head block reusable");
+         });
+ 
+         tc.Run("memalign stubs allocate aligned guest memory", [](TestCase &t)

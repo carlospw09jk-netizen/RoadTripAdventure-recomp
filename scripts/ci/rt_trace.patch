@@ -106,7 +106,7 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..4441d94 100644
+index 791dc93..e116851 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
 @@ -40,6 +40,366 @@ namespace ps2_stubs
@@ -476,16 +476,19 @@ index 791dc93..4441d94 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +458,7 @@ namespace
+@@ -98,7 +458,10 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
 -    constexpr uint32_t kGuestHeapHardLimit = 0x01F00000u;
 +    constexpr uint32_t kGuestHeapHardLimit = 0x01FF0000u;
++    // K12: minimum size for the stub scratch arena carved out of the free gap between the
++    // game's static data and the game's own heap base. Below this the legacy seeding is used.
++    constexpr uint32_t kGuestHeapMinScratchSpan = 0x00010000u;
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1072,6 +1432,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
+@@ -1072,6 +1435,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                        m_cpuContext.pc,
                                        elfCrc32,
                                        elfCrc32Valid);
@@ -494,7 +497,7 @@ index 791dc93..4441d94 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1793,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1796,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -516,7 +519,7 @@ index 791dc93..4441d94 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1926,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1929,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -531,3 +534,142 @@ index 791dc93..4441d94 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
+@@ -1892,7 +2275,41 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+     {
+         normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
+     }
++
++    // K12: decouple the reported heap window from the stub scratch allocator's arena.
++    // The game's SetupHeap tells us its heap window (base/limit) — those values must keep being
++    // reported (game bookkeeping + EndOfHeap queries). The runtime's own guestMalloc() arena,
++    // however, must stay OUT of that range: re-seeding it onto the game's heap base made the
++    // first host-side stub allocation (e.g. the sceGsResetGraph GIF packet) land exactly on the
++    // game's earliest allocations and silently clobber live structures. Seed the scratch arena
++    // into the free gap between the game's static data (the post-ELF suggestion) and the game's
++    // heap base instead; fall back to the legacy seeding only when that gap is unusable.
++    const uint32_t scratchBase = alignGuestHeapValue(clampGuestHeapBase(m_guestHeapSuggestedBase), kGuestHeapDefaultAlignment);
+     m_guestHeapSuggestedBase = normalizedBase;
++
++    if (!m_guestHeapBlocks.empty())
++    {
++        // Repeat configure call while the allocator is live: keep the current arena (never
++        // clear blocks that may still be referenced) and only refresh the reported window.
++        m_guestHeapBase = normalizedBase;
++        m_guestHeapLimit = clampGuestHeapLimit(guestLimit);
++        m_guestHeapConfigured = true;
++        return;
++    }
++
++    const bool scratchGapUsable = scratchBase != 0u && scratchBase < normalizedBase &&
++                                  (normalizedBase - scratchBase) >= kGuestHeapMinScratchSpan;
++    if (scratchGapUsable)
++    {
++        m_guestHeapBlocks.clear();
++        m_guestHeapBlocks.push_back({scratchBase, normalizedBase - scratchBase, true});
++        m_guestHeapEnd = scratchBase;
++        m_guestHeapBase = normalizedBase;
++        m_guestHeapLimit = clampGuestHeapLimit(guestLimit);
++        m_guestHeapConfigured = true;
++        return;
++    }
++
+     resetGuestHeapLocked(normalizedBase, guestLimit);
+ }
+ 
+diff --git a/ps2xTest/CMakeLists.txt b/ps2xTest/CMakeLists.txt
+index 5db04b9..c2c849b 100644
+--- a/ps2xTest/CMakeLists.txt
++++ b/ps2xTest/CMakeLists.txt
+@@ -37,6 +37,7 @@ add_library(ps2_test_lib STATIC
+     src/ps2_sif_dma_tests.cpp
+     src/ps2_recompiler_tests.cpp
+     src/ps2_runtime_expansion_tests.cpp
++    src/ps2_runtime_guestheap_tests.cpp
+ )
+ 
+ target_include_directories(ps2_test_lib PRIVATE
+diff --git a/ps2xTest/src/main.cpp b/ps2xTest/src/main.cpp
+index 40a68b1..a1ff354 100644
+--- a/ps2xTest/src/main.cpp
++++ b/ps2xTest/src/main.cpp
+@@ -18,6 +18,7 @@ void register_ps2_sif_rpc_tests();
+ void register_ps2_sif_dma_tests();
+ void register_ps2_recompiler_tests();
+ void register_ps2_runtime_expansion_tests();
++void register_ps2_runtime_guestheap_tests();
+ void reset_ps2_test_function_table();
+ 
+ int main()
+@@ -40,6 +41,7 @@ int main()
+     register_ps2_sif_dma_tests();
+     register_ps2_recompiler_tests();
+     register_ps2_runtime_expansion_tests();
++    register_ps2_runtime_guestheap_tests();
+     int res = MiniTest::Run();
+     std::cout.flush();
+     std::cerr.flush();
+diff --git a/ps2xTest/src/ps2_runtime_guestheap_tests.cpp b/ps2xTest/src/ps2_runtime_guestheap_tests.cpp
+new file mode 100644
+index 0000000..208e8ff
+--- /dev/null
++++ b/ps2xTest/src/ps2_runtime_guestheap_tests.cpp
+@@ -0,0 +1,59 @@
++#include "MiniTest.h"
++#include "ps2_runtime.h"
++
++#include <cstdint>
++
++namespace
++{
++    // Synthetic stand-in for a game's SetupHeap(base, size) values (The Warriors uses
++    // 0x715B5C / 0x18DA4A4; the exact numbers are irrelevant to the contract under test).
++    constexpr uint32_t kGameHeapBase = 0x00715B60u;
++    constexpr uint32_t kGameHeapLimit = 0x01FF0000u;
++}
++
++void register_ps2_runtime_guestheap_tests()
++{
++    MiniTest::Case("PS2RuntimeGuestHeap", [](TestCase &tc)
++    {
++        tc.Run("stub scratch allocations stay outside the game's reported heap window", [](TestCase &t)
++        {
++            PS2Runtime runtime;
++            runtime.configureGuestHeap(kGameHeapBase, kGameHeapLimit);
++
++            // The reported window must remain the game's values (SetupHeap return value and
++            // EndOfHeap rely on them).
++            t.Equals(runtime.guestHeapBase(), kGameHeapBase, "reported heap base must be the game's SetupHeap base");
++            t.Equals(runtime.guestHeapLimit(), kGameHeapLimit, "reported heap limit must be the game's SetupHeap limit");
++
++            // The stub scratch allocator (guestMalloc) must never hand out memory inside the
++            // game's heap: re-seeding it onto the game's heap base made the first host-side
++            // stub allocation land exactly on the game's earliest allocations and clobber live
++            // structures (The Warriors wall #2').
++            const uint32_t first = runtime.guestMalloc(128u, 16u);
++            t.IsTrue(first != 0u, "guestMalloc must succeed");
++            t.IsTrue(first < kGameHeapBase, "first scratch allocation must stay below the game's heap base");
++            t.IsTrue(first + 128u <= kGameHeapBase, "first scratch allocation must not reach into the game's heap");
++
++            const uint32_t second = runtime.guestMalloc(128u, 16u);
++            t.IsTrue(second != 0u, "second guestMalloc must succeed");
++            t.IsTrue(second != first, "second scratch allocation must differ from the first");
++            t.IsTrue(second < kGameHeapBase, "second scratch allocation must stay below the game's heap base");
++        });
++
++        tc.Run("repeat configureGuestHeap never re-seeds a live scratch arena", [](TestCase &t)
++        {
++            PS2Runtime runtime;
++            runtime.configureGuestHeap(kGameHeapBase, kGameHeapLimit);
++
++            const uint32_t first = runtime.guestMalloc(64u, 16u);
++            t.IsTrue(first != 0u, "guestMalloc must succeed");
++
++            // A repeated SetupHeap configure call must not clear the block list and hand the
++            // same address out again while it may still be referenced.
++            runtime.configureGuestHeap(kGameHeapBase, kGameHeapLimit);
++            const uint32_t second = runtime.guestMalloc(64u, 16u);
++            t.IsTrue(second != 0u, "guestMalloc after repeat configure must succeed");
++            t.IsTrue(second != first, "repeat configure must not reuse a live allocation's address");
++        });
++    });
++}

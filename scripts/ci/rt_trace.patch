@@ -43,10 +43,10 @@ index a68d245..e109b08 100644
  }
  
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..09473ec 100644
+index 791dc93..5b81aac 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,242 @@ namespace ps2_stubs
+@@ -40,6 +40,243 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -96,6 +96,9 @@ index 791dc93..09473ec 100644
 +        return static_cast<uint32_t>(_mm_extract_epi32(ctx->r[i], 0));
 +    }
 +
++    static void checkWatches(uint8_t *rdram, const R5900Context *ctx, uint64_t pcIndex);
++    static void writeTraceText(const std::string &text);
++
 +    static void pushBranch(uint8_t *rdram, uint32_t kind, uint32_t source, uint32_t target, const R5900Context *ctx)
 +    {
 +        if (!enabled())
@@ -134,8 +137,6 @@ index 791dc93..09473ec 100644
 +            return;
 +        g_syscalls[static_cast<uint64_t>(slot) % kSysCap].v0 = reg(ctx, 2);
 +    }
-+
-+    static void checkWatches(uint8_t *rdram, const R5900Context *ctx, uint64_t pcIndex);
 +
 +    struct WatchSlot
 +    {
@@ -289,7 +290,7 @@ index 791dc93..09473ec 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -1431,6 +1667,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1668,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -298,20 +299,20 @@ index 791dc93..09473ec 100644
 +        (targetPc == 0x229550u || targetPc == 0x2294C8u || targetPc == 0x2294ACu || targetPc == 0u ||
 +         (kind == GuestBranchKind::IndirectCall && sourcePc == 0x42AFFCu)))
 +    {
-+        const uint32_t sp = static_cast<uint32_t>(ctx->gpr[29]);
++        const uint32_t sp = rt_trace::reg(ctx, 29);
 +        const uint32_t slot = rt_trace::rd32(rdram, sp);
 +        const uint32_t slot2 = rt_trace::rd32(rdram, sp + 0x10u);
 +        const uint32_t slot3 = rt_trace::rd32(rdram, 0x1FFFF40u);
 +        std::ostringstream oss;
 +        oss << "[trace:call] to=0x" << std::hex << targetPc << " from=0x" << sourcePc << " kind=" << std::dec
-+            << static_cast<int>(kind) << " ra=0x" << std::hex << static_cast<uint32_t>(ctx->gpr[31]) << " sp=0x" << sp
++            << static_cast<int>(kind) << " ra=0x" << std::hex << rt_trace::reg(ctx, 31) << " sp=0x" << sp
 +            << " [sp]=0x" << slot << " [sp+0x10]=0x" << slot2 << " [1FFFF40]=0x" << slot3 << std::dec << "\n";
 +        rt_trace::writeTraceText(oss.str());
 +    }
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1800,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1801,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  

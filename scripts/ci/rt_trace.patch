@@ -1,8 +1,8 @@
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..e1482e4 100644
+index a68d245..d4cc18e 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-@@ -14,6 +14,11 @@
+@@ -14,6 +14,13 @@
  #include <limits>
  #include <stdexcept>
  
@@ -10,19 +10,31 @@ index a68d245..e1482e4 100644
 +// purpose: no header changes, they are diagnostic-only).
 +extern "C" void rt_trace_dump();
 +extern "C" int rt_trace_active();
++extern "C" void rt_trace_push_pc(const R5900Context *ctx);
++extern "C" void rt_trace_death(uint8_t *rdram, const R5900Context *ctx);
 +
  namespace
  {
      constexpr int KE_OK = 0;
-@@ -283,6 +288,7 @@ void EeScheduler::run()
+@@ -283,6 +290,8 @@ void EeScheduler::run()
              copyMainContextToRuntime();
              publishIdleDebugContext();
              publishSnapshot();
++            rt_trace_death(m_rdram, &context);
 +            rt_trace_dump();
              continue;
          }
  
-@@ -562,6 +568,7 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+@@ -324,6 +333,8 @@ void EeScheduler::run()
+             continue;
+         }
+ 
++        rt_trace_push_pc(&context);
++
+         try
+         {
+             m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
+@@ -562,6 +573,7 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
          m_runtime.guestFree(ownedStack);
      }
      publishSnapshot();
@@ -31,10 +43,10 @@ index a68d245..e1482e4 100644
  }
  
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..d22d5aa 100644
+index 791dc93..6ba7d78 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,123 @@ namespace ps2_stubs
+@@ -40,6 +40,194 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -63,13 +75,20 @@ index 791dc93..d22d5aa 100644
 +    {
 +        uint32_t number, pc, ra, a0, a1, v0;
 +    };
++    struct PcEntry
++    {
++        uint32_t pc, ra, sp;
++    };
 +
 +    static constexpr uint64_t kBranchCap = 4096;
 +    static constexpr uint64_t kSysCap = 1024;
 +    static BranchEntry g_branches[kBranchCap];
 +    static SysEntry g_syscalls[kSysCap];
++    static constexpr uint64_t kPcCap = 32768;
++    static PcEntry g_pcs[kPcCap];
 +    static std::atomic<uint64_t> g_branchCount{0};
 +    static std::atomic<uint64_t> g_sysCount{0};
++    static std::atomic<uint64_t> g_pcCount{0};
 +    static std::atomic<bool> g_dumped{false};
 +
 +    static inline uint32_t reg(const R5900Context *ctx, int i)
@@ -115,6 +134,51 @@ index 791dc93..d22d5aa 100644
 +        g_syscalls[static_cast<uint64_t>(slot) % kSysCap].v0 = reg(ctx, 2);
 +    }
 +
++    static void writeTraceText(const std::string &text)
++    {
++        std::cerr << text << std::flush;
++        const char *path = std::getenv("RT_TRACE_FILE");
++        if (path && *path)
++        {
++            std::ofstream f(path, std::ios::app | std::ios::binary);
++            if (f)
++                f << text;
++        }
++    }
++
++    static void pushPc(const R5900Context *ctx)
++    {
++        if (!enabled())
++            return;
++        const uint64_t i = g_pcCount.fetch_add(1, std::memory_order_relaxed);
++        PcEntry &e = g_pcs[i % kPcCap];
++        e.pc = ctx->pc;
++        e.ra = reg(ctx, 31);
++        e.sp = reg(ctx, 29);
++    }
++
++    static void deathNote(uint8_t *rdram, const R5900Context *ctx)
++    {
++        if (!enabled())
++            return;
++        std::ostringstream oss;
++        static const char *names[32] = {"r0", "at", "v0", "v1", "a0", "a1", "a2", "a3", "t0", "t1", "t2", "t3",
++                                        "t4", "t5", "t6", "t7", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7",
++                                        "t8", "t9", "k0", "k1", "gp", "sp", "fp", "ra"};
++        oss << "[trace] ==== DEATH (thread retired, pc=0) ====\n";
++        for (int r = 0; r < 32; ++r)
++            oss << "[trace:death] " << names[r] << "=0x" << std::hex << reg(ctx, r) << std::dec << "\n";
++        const uint32_t sp = reg(ctx, 29);
++        if (rdram && sp <= 0x02000000u - 128u)
++            for (uint32_t off = 0; off < 128u; off += 4u)
++            {
++                uint32_t w = 0;
++                std::memcpy(&w, rdram + sp + off, 4);
++                oss << "[trace:death] [sp+0x" << std::hex << off << "]=0x" << w << std::dec << "\n";
++            }
++        writeTraceText(oss.str());
++    }
++
 +    static void dump()
 +    {
 +        if (!enabled() || g_dumped.exchange(true))
@@ -140,7 +204,16 @@ index 791dc93..d22d5aa 100644
 +                << " ra=0x" << e.ra << " a0=0x" << e.a0 << " a1=0x" << e.a1
 +                << " a2=0x" << e.a2 << " a3=0x" << e.a3 << std::dec << "\n";
 +        }
-+        std::cerr << oss.str() << std::flush;
++        const uint64_t pcc = g_pcCount.load(std::memory_order_relaxed);
++        const uint64_t p0 = pcc > kPcCap ? pcc - kPcCap : 0;
++        oss << "[trace] ==== dispatch pcs " << p0 << ".." << pcc << " ====\n";
++        for (uint64_t i = p0; i < pcc; ++i)
++        {
++            const PcEntry &e = g_pcs[i % kPcCap];
++            oss << "[trace:pc] #" << i << " pc=0x" << std::hex << e.pc << " ra=0x" << e.ra << " sp=0x" << e.sp
++                << std::dec << "\n";
++        }
++        writeTraceText(oss.str());
 +    }
 +} // namespace rt_trace
 +
@@ -154,11 +227,21 @@ index 791dc93..d22d5aa 100644
 +    return rt_trace::enabled() ? 1 : 0;
 +}
 +
++extern "C" void rt_trace_push_pc(const R5900Context *ctx)
++{
++    rt_trace::pushPc(ctx);
++}
++
++extern "C" void rt_trace_death(uint8_t *rdram, const R5900Context *ctx)
++{
++    rt_trace::deathNote(rdram, ctx);
++}
++
 +
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -1431,6 +1548,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1619,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -166,7 +249,7 @@ index 791dc93..d22d5aa 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1667,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1738,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  

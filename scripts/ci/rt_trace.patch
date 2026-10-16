@@ -106,10 +106,10 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..5fe2dc9 100644
+index 791dc93..68918a2 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,366 @@ namespace ps2_stubs
+@@ -40,6 +40,369 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -186,7 +186,7 @@ index 791dc93..5fe2dc9 100644
 +        uint32_t addr;
 +        PS2Runtime::RecompiledFunction orig;
 +    };
-+    static WrapSlot g_wraps[28];
++    static WrapSlot g_wraps[40];
 +    static int g_wrapCount = 0;
 +    static const uint32_t kWatchNow[8] = {0x715B60u, 0x715B70u, 0x715B74u, 0x715B78u, 0x715B80u, 0x715B90u, 0x6EB978u, 0x6EB970u};
 +    static uint32_t g_watchNowLast[8] = {0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u};
@@ -237,17 +237,18 @@ index 791dc93..5fe2dc9 100644
 +    {
 +        if (!enabled())
 +            return;
-+        static const uint32_t kSuspects[24] = {
++        static const uint32_t kSuspects[30] = {
 +            0x496A50u, 0x496400u, 0x4AA180u, 0x4AA310u, 0x4AB720u, 0x4A3600u,
 +            0x4A9F28u, 0x4AA9F0u, 0x192908u, 0x339A20u, 0x338BF0u, 0x338528u,
 +            0x43D3E0u, 0x43DAD8u, 0x43CDA0u, 0x43CCA0u, 0x43D910u, 0x47BFC8u,
 +            0x47C090u, 0x497730u, 0x483750u, 0x194A68u, 0x483218u, 0x194618u,
++            0x1514A8u, 0x151360u, 0x151C70u, 0x151BC0u, 0x14EE88u, 0x14FAE8u,
 +        };
 +        std::ostringstream rep;
 +        rep << "[trace:wrap] installing suspects\n";
 +        for (uint32_t a : kSuspects)
 +        {
-+            if (g_wrapCount >= 28)
++            if (g_wrapCount >= 40)
 +                break;
 +            PS2Runtime::RecompiledFunction orig = rt.lookupFunction(a);
 +            if (!orig)
@@ -311,7 +312,7 @@ index 791dc93..5fe2dc9 100644
 +        uint32_t last;
 +        bool init;
 +    };
-+    static WatchSlot g_watch[28] = {
++    static WatchSlot g_watch[34] = {
 +        {0x1FFFF40u, 0, false}, {0x1FFFF44u, 0, false}, {0x1FFFF3Cu, 0, false}, {0x1FFFF00u, 0, false},
 +        {0x1FFFF30u, 0, false}, {0x1FFFF50u, 0, false}, {0x1FFFF70u, 0, false}, {0x1FFFFB0u, 0, false},
 +        {0x760C00u, 0, false}, {0x760C10u, 0, false}, {0x760C20u, 0, false}, {0x760C30u, 0, false},
@@ -320,6 +321,8 @@ index 791dc93..5fe2dc9 100644
 +        {0x715B60u, 0, false}, {0x715B70u, 0, false}, {0x715B74u, 0, false}, {0x715B78u, 0, false},
 +        {0x715B80u, 0, false}, {0x715B90u, 0, false}, {0x715BF0u, 0, false}, {0x6EB978u, 0, false},
 +        {0x6EB97Cu, 0, false}, {0x6EB960u, 0, false},
++        {0x50BD30u, 0, false}, {0x50BD34u, 0, false}, {0x50C540u, 0, false}, {0x50C548u, 0, false},
++        {0x50C54Cu, 0, false}, {0x50C50Cu, 0, false},
 +    };
 +
 +    static uint32_t rd32(uint8_t *rdram, uint32_t addr)
@@ -476,7 +479,7 @@ index 791dc93..5fe2dc9 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +458,15 @@ namespace
+@@ -98,7 +461,15 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -493,7 +496,7 @@ index 791dc93..5fe2dc9 100644
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1072,6 +1440,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
+@@ -1072,6 +1443,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                        m_cpuContext.pc,
                                        elfCrc32,
                                        elfCrc32Valid);
@@ -502,7 +505,7 @@ index 791dc93..5fe2dc9 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1801,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1804,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -524,7 +527,7 @@ index 791dc93..5fe2dc9 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1934,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1937,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -539,7 +542,7 @@ index 791dc93..5fe2dc9 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2280,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2283,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }

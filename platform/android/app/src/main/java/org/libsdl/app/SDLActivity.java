@@ -2104,6 +2104,15 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
                 intent.putExtra(Intent.EXTRA_MIME_TYPES, mimes.toArray(new String[]{}));
         }
 
+        /* Dev builds: start the picker in the folder the disc image usually sits in. SAF has no
+         * standard initial path; pickers based on DocumentsUI honour this extra and open straight
+         * in the folder (others ignore it and fall back to their home view). */
+        try {
+            intent.putExtra("android.provider.extra.INITIAL_URI",
+                    Uri.parse("content://com.android.externalstorage.documents/document/primary%3ADownload"));
+        } catch (Exception ignored) {
+        }
+
         try {
             mSingleton.startActivityForResult(intent, requestCode);
         } catch (ActivityNotFoundException e) {

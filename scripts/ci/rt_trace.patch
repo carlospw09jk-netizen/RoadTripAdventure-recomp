@@ -106,10 +106,10 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..f6b97e1 100644
+index 791dc93..0eccb31 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,264 @@ namespace ps2_stubs
+@@ -40,6 +40,265 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -161,6 +161,7 @@ index 791dc93..f6b97e1 100644
 +
 +    static void checkWatches(uint8_t *rdram, const R5900Context *ctx, uint64_t pcIndex);
 +    static void writeTraceText(const std::string &text);
++    static uint32_t rd32(uint8_t *rdram, uint32_t addr);
 +
 +    static void probe(uint8_t *rdram, uint32_t src, const R5900Context *ctx)
 +    {
@@ -374,7 +375,7 @@ index 791dc93..f6b97e1 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +356,7 @@ namespace
+@@ -98,7 +357,7 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -383,7 +384,7 @@ index 791dc93..f6b97e1 100644
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1431,6 +1689,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1690,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -405,7 +406,7 @@ index 791dc93..f6b97e1 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1822,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1823,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  

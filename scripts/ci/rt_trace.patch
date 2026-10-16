@@ -38,10 +38,19 @@ index 9e9c3e0..45fc2b9 100644
      // Whether a save state could be taken now (only meaningful at the top of run()). With
      // `hostState`, also checks the GIF/GS path (waits for the GIF/VIF1 worker first), the memory
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..27aa26c 100644
+index a68d245..f50c5b5 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-@@ -13,6 +13,15 @@
+@@ -3,6 +3,8 @@
+ #include "runtime/ps2_test_harness.h"
+ #include "runtime/ps2_save_state.h"
+ 
++extern "C" size_t rtTraceRpcDesc(char *out, size_t cap, size_t limit);
++
+ #include "ps2_log.h"
+ #include "ps2_runtime_macros.h"
+ 
+@@ -13,6 +15,15 @@
  #include <cstring>
  #include <limits>
  #include <stdexcept>
@@ -57,7 +66,7 @@ index a68d245..27aa26c 100644
  
  namespace
  {
-@@ -278,11 +287,34 @@ void EeScheduler::run()
+@@ -278,11 +289,34 @@ void EeScheduler::run()
                  }
                  continue;
              }
@@ -92,7 +101,7 @@ index a68d245..27aa26c 100644
              continue;
          }
  
-@@ -324,6 +356,13 @@ void EeScheduler::run()
+@@ -324,6 +358,13 @@ void EeScheduler::run()
              continue;
          }
  
@@ -106,7 +115,7 @@ index a68d245..27aa26c 100644
          try
          {
              m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
-@@ -562,6 +601,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+@@ -562,6 +603,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
          m_runtime.guestFree(ownedStack);
      }
      publishSnapshot();
@@ -115,7 +124,7 @@ index a68d245..27aa26c 100644
      throw EeDispatcherTransfer{};
  }
  
-@@ -943,6 +984,92 @@ int EeScheduler::pollSemaphore(int id)
+@@ -943,6 +986,132 @@ int EeScheduler::pollSemaphore(int id)
      return id;
  }
  
@@ -175,6 +184,46 @@ index a68d245..27aa26c 100644
 +                      t.entry);
 +        out += line;
 +    }
++    out += "==== globals ====\n";
++    {
++        auto rd = [this](uint32_t addr) -> uint32_t {
++            return static_cast<uint32_t>(m_rdram[addr & PS2_RAM_MASK]) |
++                   (static_cast<uint32_t>(m_rdram[(addr + 1u) & PS2_RAM_MASK]) << 8) |
++                   (static_cast<uint32_t>(m_rdram[(addr + 2u) & PS2_RAM_MASK]) << 16) |
++                   (static_cast<uint32_t>(m_rdram[(addr + 3u) & PS2_RAM_MASK]) << 24);
++        };
++        const uint32_t eventObj = rd(0x50AA84u);
++        std::snprintf(line,
++                      sizeof(line),
++                      "event-obj[0x50AA84]=0x%08x obj=0x%08x,%08x,%08x,%08x\n",
++                      eventObj,
++                      eventObj ? rd(eventObj) : 0u,
++                      eventObj ? rd(eventObj + 4u) : 0u,
++                      eventObj ? rd(eventObj + 8u) : 0u,
++                      eventObj ? rd(eventObj + 12u) : 0u);
++        out += line;
++        std::snprintf(line,
++                      sizeof(line),
++                      "sound: bd30=0x%08x c540=0x%08x c548=0x%08x c54c=0x%08x c50c=0x%08x c554=0x%08x c558=0x%08x c55c=0x%08x\n",
++                      rd(0x50BD30u),
++                      rd(0x50C540u),
++                      rd(0x50C548u),
++                      rd(0x50C54Cu),
++                      rd(0x50C50Cu),
++                      rd(0x50C554u),
++                      rd(0x50C558u),
++                      rd(0x50C55Cu));
++        out += line;
++    }
++    out += "==== rpc ring (last 40) ====\n";
++    {
++        char rpcBuf[8192];
++        const size_t written = rtTraceRpcDesc(rpcBuf, sizeof(rpcBuf), 40u);
++        if (written > 0u)
++        {
++            out.append(rpcBuf, written);
++        }
++    }
 +    out += "==== semaphores ====\n";
 +    for (const auto &entry : m_semaphores)
 +    {
@@ -208,7 +257,7 @@ index a68d245..27aa26c 100644
  void EeScheduler::waitSemaphore(int id)
  {
      assertExecutor();
-@@ -1291,6 +1418,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
+@@ -1291,6 +1460,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
  void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
  {
      assertExecutor();
@@ -222,7 +271,7 @@ index a68d245..27aa26c 100644
      const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
      if (cause < 32u && (mask & (1u << cause)) == 0u)
      {
-@@ -1317,7 +1451,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
+@@ -1317,7 +1493,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
          SET_GPR_U32(&invocation.context, 4, cause);
          SET_GPR_U32(&invocation.context, 5, handler.argument);
          SET_GPR_U32(&invocation.context, 28, handler.gp);
@@ -323,6 +372,77 @@ index 039da2f..9ff556f 100644
          std::cerr << prefix << safeText;
          if (safeText.empty() || safeText.back() != '\n')
          {
+diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
+index 464a624..46d6215 100644
+--- a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
++++ b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
+@@ -1058,3 +1058,66 @@ namespace ps2_syscalls
+         ar & g_osd_config2_raw;
+     }
+ }
++
++// Trace helper: serialize the recent SIF RPC debug-ring into a text buffer.
++// Lives here because the ring and its event type are private to this TU.
++extern "C" size_t rtTraceRpcDesc(char *out, size_t cap, size_t limit)
++{
++    if (out == nullptr || cap == 0u)
++    {
++        return 0u;
++    }
++    uint64_t maxSeq = 0u;
++    for (size_t i = 0; i < kSifRpcDebugHistoryCount; ++i)
++    {
++        if (g_sif_rpc_debug_history[i].seq > maxSeq)
++        {
++            maxSeq = g_sif_rpc_debug_history[i].seq;
++        }
++    }
++    if (maxSeq == 0u)
++    {
++        return 0u;
++    }
++    size_t used = 0u;
++    const size_t count = std::min<size_t>(limit, static_cast<size_t>(maxSeq));
++    const size_t begin = static_cast<size_t>(maxSeq) + 1u - count;
++    for (size_t seq = begin; seq <= static_cast<size_t>(maxSeq); ++seq)
++    {
++        const SifRpcDebugEvent &e = g_sif_rpc_debug_history[seq % kSifRpcDebugHistoryCount];
++        if (e.seq == 0u)
++        {
++            continue;
++        }
++        char line[320];
++        const int n = std::snprintf(line,
++                                    sizeof(line),
++                                    "rpc#%llu %s sid=0x%08x fn=0x%x fl=0x%x res=%d pc=0x%08x ra=0x%08x snd=%u rcv=%u prev=%02x%02x%02x%02x\n",
++                                    static_cast<unsigned long long>(e.seq),
++                                    e.op != nullptr ? e.op : "?",
++                                    e.sid,
++                                    e.rpcNum,
++                                    e.flags,
++                                    e.result,
++                                    e.pc,
++                                    e.ra,
++                                    e.sendSize,
++                                    e.recvSize,
++                                    e.sendPreview[0],
++                                    e.sendPreview[1],
++                                    e.sendPreview[2],
++                                    e.sendPreview[3]);
++        if (n <= 0)
++        {
++            continue;
++        }
++        const size_t len = std::min<size_t>(static_cast<size_t>(n), sizeof(line) - 1u);
++        if (used + len > cap)
++        {
++            break;
++        }
++        std::memcpy(out + used, line, len);
++        used += len;
++    }
++    return used;
++}
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
 index 6b57dcf..0781ab3 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/System.cpp
@@ -346,7 +466,7 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..6c56299 100644
+index 791dc93..ce51413 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
 @@ -40,6 +40,378 @@ namespace ps2_stubs
@@ -754,7 +874,7 @@ index 791dc93..6c56299 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1813,22 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1813,23 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -762,6 +882,7 @@ index 791dc93..6c56299 100644
 +    if (rt_trace::enabled() &&
 +        (targetPc == 0x229550u || targetPc == 0x2294C8u || targetPc == 0x2294ACu || targetPc == 0u ||
 +         targetPc == 0x4AB438u || targetPc == 0x4AB560u || targetPc == 0x4AB258u || targetPc == 0x4AB498u ||
++         targetPc == 0x440110u || targetPc == 0x440758u || targetPc == 0x151C70u || targetPc == 0x43F870u ||
 +         (kind == GuestBranchKind::IndirectCall && sourcePc == 0x42AFFCu)))
 +    {
 +        const uint32_t sp = rt_trace::reg(ctx, 29);
@@ -777,7 +898,7 @@ index 791dc93..6c56299 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1947,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1948,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -792,7 +913,7 @@ index 791dc93..6c56299 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2293,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2294,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }

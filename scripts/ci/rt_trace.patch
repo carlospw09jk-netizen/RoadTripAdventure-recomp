@@ -373,10 +373,33 @@ index 039da2f..9ff556f 100644
          if (safeText.empty() || safeText.back() != '\n')
          {
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-index 464a624..0582639 100644
+index 464a624..77434b5 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-@@ -1058,3 +1058,70 @@ namespace ps2_syscalls
+@@ -661,8 +661,20 @@ namespace ps2_syscalls
+                     (!handled ? kSifRpcDebugFlagUnhandled : 0u) |
+                     (copiedFallback ? kSifRpcDebugFlagFallbackCopy : 0u) |
+                     (zeroedFallback ? kSifRpcDebugFlagFallbackZero : 0u);
+-                fillRpcDebugPreview(rdram, sendBuf, sendSize, event.sendPreview, event.sendPreviewSize);
+-                fillRpcDebugPreview(rdram, receiveBuffer, receiveSize, event.recvPreview, event.recvPreviewSize);
++                // K21: sample the payload's INNER regions so the trace shows whether the
++                // transferred data changes between calls (stream) or repeats (retry).
++                const uint32_t sendSampleOffset = sendSize >= 0x1000u ? 0x800u : 0u;
++                const uint32_t recvSampleOffset = receiveSize >= 0x800u ? 0x400u : 0u;
++                fillRpcDebugPreview(rdram,
++                                    sendBuf + sendSampleOffset,
++                                    sendSize - sendSampleOffset,
++                                    event.sendPreview,
++                                    event.sendPreviewSize);
++                fillRpcDebugPreview(rdram,
++                                    receiveBuffer + recvSampleOffset,
++                                    receiveSize - recvSampleOffset,
++                                    event.recvPreview,
++                                    event.recvPreviewSize);
+                 event.result = 0;
+ #if PS2X_ENABLE_IOP_RPC_TRACE
+                 if ((event.flags & kSifRpcDebugFlagUnhandled) != 0u)
+@@ -1058,3 +1070,70 @@ namespace ps2_syscalls
          ar & g_osd_config2_raw;
      }
  }

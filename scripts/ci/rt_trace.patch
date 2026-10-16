@@ -106,10 +106,10 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..e9dd254 100644
+index 791dc93..9b86a16 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,268 @@ namespace ps2_stubs
+@@ -40,6 +40,281 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -262,8 +262,15 @@ index 791dc93..e9dd254 100644
 +            {
 +                std::ostringstream oss;
 +                oss << "[trace:watch] #" << pcIndex << " pc=0x" << std::hex << ctx->pc << " addr=0x" << w.addr
-+                    << " old=0x" << w.last << " new=0x" << now << " ra=0x" << reg(ctx, 31) << " sp=0x" << reg(ctx, 29)
-+                    << std::dec << "\n";
++                    << " old=0x" << w.last << " new=0x" << now << " ra=0x" << reg(ctx, 31) << " sp=0x" << reg(ctx, 29);
++                const uint64_t pcCount = g_pcCount.load(std::memory_order_relaxed);
++                if (pcCount > 0)
++                {
++                    oss << " prevpc=";
++                    for (uint64_t k = (pcCount > 6 ? pcCount - 6 : 0); k < pcCount; ++k)
++                        oss << "0x" << g_pcs[k % kPcCap].pc << ",";
++                }
++                oss << std::dec << "\n";
 +                writeTraceText(oss.str());
 +                w.last = now;
 +            }
@@ -318,9 +325,15 @@ index 791dc93..e9dd254 100644
 +
 +    static void dump()
 +    {
-+        if (!enabled() || g_dumped.exchange(true))
++        if (!enabled())
 +            return;
-+        const uint64_t bc = g_branchCount.load(std::memory_order_relaxed);
++        static std::atomic<uint64_t> g_lastDumpBranch{0};
++        const uint64_t bcNow = g_branchCount.load(std::memory_order_relaxed);
++        const uint64_t prevDump = g_lastDumpBranch.load(std::memory_order_relaxed);
++        if (g_dumped.exchange(true) && bcNow < prevDump + 1024u)
++            return; // already dumped, and no meaningful new activity since
++        g_lastDumpBranch.store(bcNow, std::memory_order_relaxed);
++        const uint64_t bc = bcNow;
 +        const uint64_t sc = g_sysCount.load(std::memory_order_relaxed);
 +        std::ostringstream oss;
 +        const uint64_t s0 = sc > kSysCap ? sc - kSysCap : 0;
@@ -378,7 +391,7 @@ index 791dc93..e9dd254 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +360,7 @@ namespace
+@@ -98,7 +373,7 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -387,7 +400,7 @@ index 791dc93..e9dd254 100644
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1431,6 +1693,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1706,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
@@ -409,7 +422,7 @@ index 791dc93..e9dd254 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1826,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1839,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  

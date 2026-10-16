@@ -1,8 +1,20 @@
+diff --git a/ps2xRuntime/include/runtime/ee_scheduler.h b/ps2xRuntime/include/runtime/ee_scheduler.h
+index 9e9c3e0..a770fa3 100644
+--- a/ps2xRuntime/include/runtime/ee_scheduler.h
++++ b/ps2xRuntime/include/runtime/ee_scheduler.h
+@@ -450,6 +450,7 @@ public:
+ 
+     [[nodiscard]] EeKernelSnapshot snapshot() const;
+     void publishSnapshot();
++    void rtTraceDiagnostics();
+ 
+     // Whether a save state could be taken now (only meaningful at the top of run()). With
+     // `hostState`, also checks the GIF/GS path (waits for the GIF/VIF1 worker first), the memory
 diff --git a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-index a68d245..220199d 100644
+index a68d245..9507856 100644
 --- a/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/EeScheduler.cpp
-@@ -13,6 +13,14 @@
+@@ -13,6 +13,15 @@
  #include <cstring>
  #include <limits>
  #include <stdexcept>
@@ -14,19 +26,21 @@ index a68d245..220199d 100644
 +extern "C" int rt_trace_active();
 +extern "C" void rt_trace_push_pc(uint8_t *rdram, const R5900Context *ctx);
 +extern "C" void rt_trace_death(uint8_t *rdram, const R5900Context *ctx);
++extern "C" void rt_trace_emit(const char *text);
  
  namespace
  {
-@@ -283,6 +291,8 @@ void EeScheduler::run()
+@@ -283,6 +292,9 @@ void EeScheduler::run()
              copyMainContextToRuntime();
              publishIdleDebugContext();
              publishSnapshot();
 +            rt_trace_death(m_rdram, &context);
 +            rt_trace_dump();
++            rtTraceDiagnostics();
              continue;
          }
  
-@@ -324,6 +334,8 @@ void EeScheduler::run()
+@@ -324,6 +336,8 @@ void EeScheduler::run()
              continue;
          }
  
@@ -35,15 +49,109 @@ index a68d245..220199d 100644
          try
          {
              m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
-@@ -562,6 +574,7 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
+@@ -562,6 +576,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
          m_runtime.guestFree(ownedStack);
      }
      publishSnapshot();
 +    rt_trace_dump();
++    rtTraceDiagnostics();
      throw EeDispatcherTransfer{};
  }
  
-@@ -1291,6 +1304,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
+@@ -943,6 +959,92 @@ int EeScheduler::pollSemaphore(int id)
+     return id;
+ }
+ 
++void EeScheduler::rtTraceDiagnostics()
++{
++    if (!rt_trace_active())
++    {
++        return;
++    }
++    std::string out;
++    char line[512];
++    out += "==== threads ====\n";
++    for (const auto &entry : m_threads)
++    {
++        const GuestThread &t = entry.second;
++        const R5900Context &c = t.activeContext();
++        const char *reason = "None";
++        switch (t.wait.reason)
++        {
++        case EeWaitReason::Sleep: reason = "Sleep"; break;
++        case EeWaitReason::Semaphore: reason = "Sema"; break;
++        case EeWaitReason::EventFlag: reason = "Evf"; break;
++        case EeWaitReason::VSync: reason = "VSync"; break;
++        case EeWaitReason::External: reason = "Ext"; break;
++        case EeWaitReason::Mpeg: reason = "Mpeg"; break;
++        default: break;
++        }
++        int waitId = -1;
++        uint32_t waitType = 0;
++        uint64_t waitToken = 0;
++        if (const auto *sw = std::get_if<EeSemaphoreWait>(&t.wait.payload))
++        {
++            waitId = sw->id;
++        }
++        else if (const auto *ew = std::get_if<EeEventFlagWait>(&t.wait.payload))
++        {
++            waitId = ew->id;
++        }
++        else if (const auto *xw = std::get_if<EeExternalWait>(&t.wait.payload))
++        {
++            waitType = xw->type;
++            waitToken = xw->token;
++        }
++        std::snprintf(line,
++                      sizeof(line),
++                      "t#%d st=%d prio=%d reason=%s wid=%d wtype=0x%x wtok=0x%llx pc=0x%08x ra=0x%08x sp=0x%08x entry=0x%08x\n",
++                      t.id,
++                      static_cast<int>(t.status),
++                      t.currentPriority,
++                      reason,
++                      waitId,
++                      waitType,
++                      static_cast<unsigned long long>(waitToken),
++                      static_cast<uint32_t>(c.pc),
++                      static_cast<uint32_t>(getRegU32(&c, 31)),
++                      static_cast<uint32_t>(getRegU32(&c, 29)),
++                      t.entry);
++        out += line;
++    }
++    out += "==== semaphores ====\n";
++    for (const auto &entry : m_semaphores)
++    {
++        const EeSemaphore &s = entry.second;
++        std::snprintf(line,
++                      sizeof(line),
++                      "sema#%d count=%d max=%d init=%d waiters=%zu\n",
++                      s.id,
++                      s.count,
++                      s.maxCount,
++                      s.initCount,
++                      s.waiters.size());
++        out += line;
++    }
++    out += "==== eventflags ====\n";
++    for (const auto &entry : m_eventFlags)
++    {
++        const EeEventFlag &f = entry.second;
++        std::snprintf(line,
++                      sizeof(line),
++                      "evf#%d bits=0x%08x attr=0x%x waiters=%zu\n",
++                      f.id,
++                      f.bits,
++                      f.attr,
++                      f.waiters.size());
++        out += line;
++    }
++    rt_trace_emit(out.c_str());
++}
++
+ void EeScheduler::waitSemaphore(int id)
+ {
+     assertExecutor();
+@@ -1291,6 +1393,13 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
  void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
  {
      assertExecutor();
@@ -57,7 +165,7 @@ index a68d245..220199d 100644
      const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
      if (cause < 32u && (mask & (1u << cause)) == 0u)
      {
-@@ -1317,7 +1337,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
+@@ -1317,7 +1426,24 @@ void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
          SET_GPR_U32(&invocation.context, 4, cause);
          SET_GPR_U32(&invocation.context, 5, handler.argument);
          SET_GPR_U32(&invocation.context, 28, handler.gp);
@@ -144,10 +252,10 @@ index 6b57dcf..0781ab3 100644
          const uint32_t ret = runtime
                                   ? runtime->guestHeapLimit()
 diff --git a/ps2xRuntime/src/lib/ps2_runtime.cpp b/ps2xRuntime/src/lib/ps2_runtime.cpp
-index 791dc93..68918a2 100644
+index 791dc93..6c56299 100644
 --- a/ps2xRuntime/src/lib/ps2_runtime.cpp
 +++ b/ps2xRuntime/src/lib/ps2_runtime.cpp
-@@ -40,6 +40,369 @@ namespace ps2_stubs
+@@ -40,6 +40,378 @@ namespace ps2_stubs
      void resetSifState();
  }
  
@@ -503,6 +611,15 @@ index 791dc93..68918a2 100644
 +    return rt_trace::enabled() ? 1 : 0;
 +}
 +
++extern "C" void rt_trace_emit(const char *text)
++{
++    if (text == nullptr)
++    {
++        return;
++    }
++    rt_trace::writeTraceText(std::string(text));
++}
++
 +extern "C" void rt_trace_push_pc(uint8_t *rdram, const R5900Context *ctx)
 +{
 +    rt_trace::pushPc(rdram, ctx);
@@ -517,7 +634,7 @@ index 791dc93..68918a2 100644
  #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
  #define ET_EXEC 2            // Executable file
  #define EM_MIPS 8            // MIPS architecture
-@@ -98,7 +461,15 @@ namespace
+@@ -98,7 +470,15 @@ namespace
      constexpr uint32_t kGuestHeapDefaultBase = 0x00100000u;
      constexpr uint32_t kGuestHeapDefaultAlignment = 16u;
      constexpr uint32_t kGuestHeapSafetyPad = 0x1000u;
@@ -534,7 +651,7 @@ index 791dc93..68918a2 100644
  
      constexpr uint32_t COP0_CAUSE_EXCCODE_MASK = 0x0000007Cu;
      constexpr uint32_t COP0_CAUSE_BD = 0x80000000u;
-@@ -1072,6 +1443,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
+@@ -1072,6 +1452,8 @@ bool PS2Runtime::loadELF(const std::string &elfPath)
                                        m_cpuContext.pc,
                                        elfCrc32,
                                        elfCrc32Valid);
@@ -543,13 +660,14 @@ index 791dc93..68918a2 100644
      ps2_save_state::setGameIdentity(elfCrc32Valid ? elfCrc32 : 0u);
  
      RUNTIME_LOG("ELF file loaded successfully. Entry point: 0x" << std::hex << m_cpuContext.pc << std::dec);
-@@ -1431,6 +1804,21 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
+@@ -1431,6 +1813,22 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
                                       const char *debugName)
  {
      ctx->pc = targetPc;
 +    rt_trace::pushBranch(rdram, static_cast<uint32_t>(kind), sourcePc, targetPc, ctx);
 +    if (rt_trace::enabled() &&
 +        (targetPc == 0x229550u || targetPc == 0x2294C8u || targetPc == 0x2294ACu || targetPc == 0u ||
++         targetPc == 0x4AB438u || targetPc == 0x4AB560u || targetPc == 0x4AB258u || targetPc == 0x4AB498u ||
 +         (kind == GuestBranchKind::IndirectCall && sourcePc == 0x42AFFCu)))
 +    {
 +        const uint32_t sp = rt_trace::reg(ctx, 29);
@@ -565,7 +683,7 @@ index 791dc93..68918a2 100644
      const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
  
      // Every inter-function transfer is also a deterministic EE safe point.
-@@ -1549,11 +1937,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
+@@ -1549,11 +1947,14 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
                                     ? encodedSyscallId
                                     : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
  
@@ -580,7 +698,7 @@ index 791dc93..68918a2 100644
      // God help you
      ps2_syscalls::TODO(rdram, ctx, this, encodedSyscallId);
  }
-@@ -1892,7 +2283,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
+@@ -1892,7 +2293,64 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
      {
          normalizedBase = (m_guestHeapSuggestedBase != 0u) ? m_guestHeapSuggestedBase : kGuestHeapDefaultBase;
      }

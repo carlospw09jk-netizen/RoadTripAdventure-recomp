@@ -10,6 +10,18 @@ index 2bfbec7..cfffca9 100644
  
      private:
          class Impl;
+diff --git a/ps2xIOP/include/ps2x/iop/iop_types.h b/ps2xIOP/include/ps2x/iop/iop_types.h
+index 3491440..a3acc43 100644
+--- a/ps2xIOP/include/ps2x/iop/iop_types.h
++++ b/ps2xIOP/include/ps2x/iop/iop_types.h
+@@ -32,6 +32,7 @@ namespace ps2x::iop
+         bool handled = false;
+         int32_t moduleId = -1;
+         int32_t startResult = -1;
++        uint32_t entryAddress = 0; // absolute address of the module's start routine (base + ELF entry)
+     };
+ 
+     enum class RpcAbi : uint32_t
 diff --git a/ps2xIOP/src/emulator/core/iop_kernel.cpp b/ps2xIOP/src/emulator/core/iop_kernel.cpp
 index 35aacc1..f6ea18c 100644
 --- a/ps2xIOP/src/emulator/core/iop_kernel.cpp
@@ -110,10 +122,18 @@ index 1f5ad28..6c304b6 100644
          // running synchronously on a temporary context): advance to the next pending event (DMA
          // completion) and service it. Returns false when nothing is pending.
 diff --git a/ps2xIOP/src/emulator/iop_emulator.cpp b/ps2xIOP/src/emulator/iop_emulator.cpp
-index 2a45330..a1dfeca 100644
+index 2a45330..d589f54 100644
 --- a/ps2xIOP/src/emulator/iop_emulator.cpp
 +++ b/ps2xIOP/src/emulator/iop_emulator.cpp
-@@ -1116,6 +1116,11 @@ namespace ps2x::iop::detail
+@@ -837,6 +837,7 @@ namespace ps2x::iop::detail
+             module.resident = startResult == 0u || startResult == 2u;
+             result.moduleId = module.id;
+             result.startResult = static_cast<int32_t>(startResult);
++            result.entryAddress = module.entry;
+             modules[module.id] = std::move(module);
+             bindNativeFunctions();
+ 
+@@ -1116,6 +1117,11 @@ namespace ps2x::iop::detail
          return static_cast<uint32_t>(m_impl->kernel.threadCount());
      }
  
@@ -553,10 +573,18 @@ index 039da2f..9ff556f 100644
          if (safeText.empty() || safeText.back() != '\n')
          {
 diff --git a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-index 464a624..77434b5 100644
+index 464a624..1494ccf 100644
 --- a/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
 +++ b/ps2xRuntime/src/lib/Kernel/Syscalls/RPC.cpp
-@@ -661,8 +661,20 @@ namespace ps2_syscalls
+@@ -248,6 +248,7 @@ namespace ps2_syscalls
+ 
+         trackSifModuleLoadExternal(modulePath, loaded.moduleId);
+         logSifModuleAction("load-emulated", loaded.moduleId, modulePath, 1u);
++        std::fprintf(stderr, "[SIF module]   entry=0x%08x id=%d path=%s\n", loaded.entryAddress, loaded.moduleId, modulePath.c_str());
+         setReturnS32(ctx, loaded.moduleId);
+     }
+ 
+@@ -661,8 +662,20 @@ namespace ps2_syscalls
                      (!handled ? kSifRpcDebugFlagUnhandled : 0u) |
                      (copiedFallback ? kSifRpcDebugFlagFallbackCopy : 0u) |
                      (zeroedFallback ? kSifRpcDebugFlagFallbackZero : 0u);
@@ -579,7 +607,7 @@ index 464a624..77434b5 100644
                  event.result = 0;
  #if PS2X_ENABLE_IOP_RPC_TRACE
                  if ((event.flags & kSifRpcDebugFlagUnhandled) != 0u)
-@@ -1058,3 +1070,70 @@ namespace ps2_syscalls
+@@ -1058,3 +1071,70 @@ namespace ps2_syscalls
          ar & g_osd_config2_raw;
      }
  }
